@@ -21,6 +21,7 @@ import "./globals.css";
 import { GlobalTicker } from "@/components/layout/GlobalTicker";
 import { Navigation } from "@/components/layout/Navigation";
 import { Web3Provider } from "@/components/providers/Web3Provider";
+import { AuthProvider } from "@/lib/auth";
 import { TOP_PSA10_ASSETS } from "@/lib/ticker-data";
 import { layout } from "@/lib/theme";
 
@@ -67,6 +68,7 @@ export default function RootLayout({
     >
       <body className="antialiased">
         <Web3Provider>
+        <AuthProvider>
           {/* ── Fixed chrome: ticker + nav ── */}
           <div
             className="fixed left-0 right-0 top-0"
@@ -85,6 +87,7 @@ export default function RootLayout({
           >
             {children}
           </main>
+        </AuthProvider>
         </Web3Provider>
       </body>
     </html>

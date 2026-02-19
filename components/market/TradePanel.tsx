@@ -1,25 +1,33 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { CheckCircle, Lock } from "lucide-react";
 import { colors } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
+import { useAuth } from "@/lib/auth";
 import type { AssetData } from "@/lib/market-data";
 
 interface TradePanelProps {
   asset: AssetData;
+  onRequestSignIn?: () => void;
 }
 
-export function TradePanel({ asset }: TradePanelProps) {
+type Stage = "form" | "review" | "confirmed";
+
+export function TradePanel({ asset, onRequestSignIn }: TradePanelProps) {
+  const { user, isAuthenticated, updateBalance } = useAuth();
+
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
   const [quantity, setQuantity] = useState(1);
   const [limitPrice, setLimitPrice] = useState(asset.price);
-  const [submitted, setSubmitted] = useState(false);
+  const [stage, setStage] = useState<Stage>("form");
 
-  // Sync limit price when asset changes
+  // Reset to form when asset changes
   useEffect(() => {
     setLimitPrice(asset.price);
-  }, [asset.symbol]);
+    setStage("form");
+  }, [asset.symbol, asset.price]);
 
   const estPrice =
     orderType === "market"
@@ -33,13 +41,127 @@ export function TradePanel({ asset }: TradePanelProps) {
   const accent = isBuy ? colors.green : colors.red;
   const accentMuted = isBuy ? colors.greenMuted : colors.redMuted;
 
-  function handleSubmit() {
-    setSubmitted(true);
-    setTimeout(() => setSubmitted(false), 2000);
+  const canAfford = !isAuthenticated || (user?.cashBalance ?? 0) >= total;
+
+  function handleReview() {
+    if (!isAuthenticated) {
+      onRequestSignIn?.();
+      return;
+    }
+    setStage("review");
   }
 
+  function handleConfirm() {
+    if (isBuy) updateBalance(-total);
+    else updateBalance(total);
+    setStage("confirmed");
+    setTimeout(() => setStage("form"), 3000);
+  }
+
+  // ── Confirmed state ──────────────────────────────────
+  if (stage === "confirmed") {
+    return (
+      <div className="flex flex-col items-center gap-3 px-3 py-8 text-center">
+        <CheckCircle size={36} strokeWidth={1.5} style={{ color: colors.green }} />
+        <p className="text-[14px] font-bold" style={{ color: colors.textPrimary }}>
+          Order Confirmed
+        </p>
+        <p className="text-[12px]" style={{ color: colors.textSecondary }}>
+          {isBuy ? "Added to" : "Removed from"} your portfolio.
+        </p>
+      </div>
+    );
+  }
+
+  // ── Review state ─────────────────────────────────────
+  if (stage === "review") {
+    return (
+      <div className="flex flex-col gap-3 p-3">
+        <p className="text-[12px] font-semibold" style={{ color: colors.textMuted }}>
+          Review Order
+        </p>
+
+        <div
+          className="overflow-hidden rounded-[10px] border"
+          style={{ borderColor: colors.border }}
+        >
+          {[
+            { label: "Action",    value: isBuy ? "Buy" : "Sell",          accent: true },
+            { label: "Card",      value: asset.name,                       accent: false },
+            { label: "Quantity",  value: `${quantity} cop.`,               accent: false },
+            { label: "Order",     value: orderType === "market" ? "Market" : `Limit @ ${formatCurrency(limitPrice)}`, accent: false },
+            { label: "Est. Price",value: formatCurrency(estPrice),         accent: false },
+          ].map((row, i, arr) => (
+            <div
+              key={row.label}
+              className="flex items-center justify-between px-3 py-[10px]"
+              style={{
+                borderBottom: i < arr.length - 1 ? `1px solid ${colors.borderSubtle}` : undefined,
+                background: i % 2 === 0 ? "transparent" : colors.surfaceRaised + "44",
+              }}
+            >
+              <span className="text-[11px]" style={{ color: colors.textMuted }}>{row.label}</span>
+              <span
+                className="text-[12px] font-semibold"
+                style={{ color: row.accent ? accent : colors.textPrimary }}
+              >
+                {row.value}
+              </span>
+            </div>
+          ))}
+
+          {/* Total */}
+          <div
+            className="flex items-center justify-between px-3 py-3"
+            style={{ background: accentMuted, borderTop: `1px solid ${accent}33` }}
+          >
+            <span className="text-[12px] font-bold" style={{ color: colors.textPrimary }}>
+              Total
+            </span>
+            <span className="tabular-nums text-[16px] font-black" style={{ color: accent }}>
+              {formatCurrency(total)}
+            </span>
+          </div>
+        </div>
+
+        <button
+          onClick={handleConfirm}
+          className="w-full rounded-[10px] py-[11px] text-[13px] font-bold transition-all duration-150 active:scale-[0.98]"
+          style={{ background: accent, color: colors.textInverse }}
+        >
+          Confirm {isBuy ? "Purchase" : "Sale"}
+        </button>
+
+        <button
+          onClick={() => setStage("form")}
+          className="w-full rounded-[10px] py-[9px] text-[12px] font-semibold transition-colors"
+          style={{
+            background: "transparent",
+            color: colors.textMuted,
+            border: `1px solid ${colors.border}`,
+          }}
+        >
+          Back
+        </button>
+      </div>
+    );
+  }
+
+  // ── Form state ───────────────────────────────────────
   return (
     <div className="flex flex-col gap-3 p-3">
+      {/* Available balance */}
+      {isAuthenticated && user && (
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
+            Available
+          </span>
+          <span className="tabular-nums text-[12px] font-semibold" style={{ color: colors.textSecondary }}>
+            {formatCurrency(user.cashBalance)}
+          </span>
+        </div>
+      )}
+
       {/* Buy / Sell toggle */}
       <div
         className="flex rounded-[8px] p-[3px]"
@@ -53,15 +175,11 @@ export function TradePanel({ asset }: TradePanelProps) {
             style={{
               background:
                 side === s
-                  ? s === "buy"
-                    ? colors.greenMuted
-                    : colors.redMuted
+                  ? s === "buy" ? colors.greenMuted : colors.redMuted
                   : "transparent",
               color:
                 side === s
-                  ? s === "buy"
-                    ? colors.green
-                    : colors.red
+                  ? s === "buy" ? colors.green : colors.red
                   : colors.textMuted,
               border:
                 side === s
@@ -111,9 +229,7 @@ export function TradePanel({ asset }: TradePanelProps) {
           <input
             type="number"
             value={limitPrice}
-            onChange={(e) =>
-              setLimitPrice(parseFloat(e.target.value) || asset.price)
-            }
+            onChange={(e) => setLimitPrice(parseFloat(e.target.value) || asset.price)}
             min={0}
             step={10}
             className="w-full rounded-[8px] px-3 py-2 text-[12px] tabular-nums font-medium"
@@ -127,18 +243,18 @@ export function TradePanel({ asset }: TradePanelProps) {
         </div>
       )}
 
-      {/* Quantity stepper */}
+      {/* Quantity */}
       <div>
         <label
           className="mb-1 block text-[10px] font-semibold uppercase tracking-wider"
           style={{ color: colors.textMuted }}
         >
-          Quantity (copies)
+          Quantity
         </label>
         <div className="flex items-center gap-2">
           <button
             onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[18px] font-bold leading-none transition-colors duration-100"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[18px] font-bold leading-none"
             style={{
               background: colors.surfaceRaised,
               color: colors.textPrimary,
@@ -155,7 +271,7 @@ export function TradePanel({ asset }: TradePanelProps) {
           </span>
           <button
             onClick={() => setQuantity((q) => q + 1)}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[18px] font-bold leading-none transition-colors duration-100"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] text-[18px] font-bold leading-none"
             style={{
               background: colors.surfaceRaised,
               color: colors.textPrimary,
@@ -172,11 +288,8 @@ export function TradePanel({ asset }: TradePanelProps) {
         className="rounded-[8px] p-3"
         style={{ background: colors.surfaceRaised }}
       >
-        <div
-          className="flex justify-between text-[11px]"
-          style={{ color: colors.textMuted }}
-        >
-          <span>Est. Price</span>
+        <div className="flex justify-between text-[11px]" style={{ color: colors.textMuted }}>
+          <span>Est. Price per card</span>
           <span className="tabular-nums font-medium" style={{ color: colors.textSecondary }}>
             {formatCurrency(estPrice)}
           </span>
@@ -188,33 +301,32 @@ export function TradePanel({ asset }: TradePanelProps) {
           <span className="text-[12px] font-semibold" style={{ color: colors.textPrimary }}>
             Total
           </span>
-          <span
-            className="tabular-nums text-[15px] font-bold"
-            style={{ color: colors.textPrimary }}
-          >
+          <span className="tabular-nums text-[15px] font-bold" style={{ color: colors.textPrimary }}>
             {formatCurrency(total)}
           </span>
         </div>
       </div>
 
-      {/* Submit */}
-      <button
-        onClick={handleSubmit}
-        className="w-full rounded-[10px] py-[10px] text-[13px] font-bold transition-all duration-150 active:scale-[0.98]"
-        style={{
-          background: submitted ? accentMuted : accent,
-          color: submitted ? accent : colors.textInverse,
-          border: `1px solid ${accent}`,
-        }}
-      >
-        {submitted
-          ? "✓ Order Placed"
-          : `Place ${isBuy ? "Buy" : "Sell"} Order`}
-      </button>
-
-      <p className="text-center text-[10px]" style={{ color: colors.textMuted }}>
-        Paper trading · no real transactions
-      </p>
+      {/* CTA */}
+      {!isAuthenticated ? (
+        <button
+          onClick={onRequestSignIn}
+          className="flex w-full items-center justify-center gap-2 rounded-[10px] py-[10px] text-[13px] font-bold transition-all duration-150 active:scale-[0.98]"
+          style={{ background: colors.green, color: colors.textInverse }}
+        >
+          <Lock size={13} strokeWidth={2.5} />
+          Sign In to Trade
+        </button>
+      ) : (
+        <button
+          onClick={handleReview}
+          disabled={!canAfford}
+          className="w-full rounded-[10px] py-[10px] text-[13px] font-bold transition-all duration-150 active:scale-[0.98] disabled:opacity-40"
+          style={{ background: accent, color: colors.textInverse }}
+        >
+          {!canAfford ? "Insufficient Funds" : `Review ${isBuy ? "Purchase" : "Sale"}`}
+        </button>
+      )}
     </div>
   );
 }
