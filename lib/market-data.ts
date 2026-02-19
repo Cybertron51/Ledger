@@ -12,6 +12,8 @@
 export interface AssetData {
   name: string;
   symbol: string;
+  /** On-chain ERC-1155 token ID in CardNFT */
+  tokenId: number;
   grade: number;
   price: number;
   change: number;
@@ -213,6 +215,7 @@ export const ASSETS: AssetData[] = [
   {
     name: "Charizard Holo",
     symbol: "CHZ10-BASE-1999",
+    tokenId: 1,
     grade: 10,
     price: 14_250.00,
     change: +850.00,
@@ -226,6 +229,7 @@ export const ASSETS: AssetData[] = [
   {
     name: "Pikachu Illustrator",
     symbol: "PIKA10-ILLUS-1998",
+    tokenId: 2,
     grade: 10,
     price: 248_000.00,
     change: -12_500.00,
@@ -239,6 +243,7 @@ export const ASSETS: AssetData[] = [
   {
     name: "Blastoise Holo",
     symbol: "BLS10-BASE-1999",
+    tokenId: 3,
     grade: 10,
     price: 3_800.00,
     change: +210.00,
@@ -252,6 +257,7 @@ export const ASSETS: AssetData[] = [
   {
     name: "LeBron James RC",
     symbol: "LBJ10-TOP-2003",
+    tokenId: 4,
     grade: 10,
     price: 5_650.00,
     change: +320.00,
@@ -265,6 +271,7 @@ export const ASSETS: AssetData[] = [
   {
     name: "Michael Jordan RC",
     symbol: "MJ10-STAR-1986",
+    tokenId: 5,
     grade: 10,
     price: 738_000.00,
     change: +21_000.00,
@@ -278,6 +285,7 @@ export const ASSETS: AssetData[] = [
   {
     name: "Mew Promo",
     symbol: "MEW10-CORO-1996",
+    tokenId: 6,
     grade: 10,
     price: 18_400.00,
     change: -900.00,
@@ -291,6 +299,7 @@ export const ASSETS: AssetData[] = [
   {
     name: "Patrick Mahomes RC",
     symbol: "PMH10-OPTIC-2017",
+    tokenId: 7,
     grade: 10,
     price: 2_100.00,
     change: +155.00,
@@ -304,6 +313,7 @@ export const ASSETS: AssetData[] = [
   {
     name: "Shohei Ohtani RC",
     symbol: "SHO10-TOPPS-2018",
+    tokenId: 8,
     grade: 10,
     price: 1_450.00,
     change: -88.00,
@@ -317,6 +327,7 @@ export const ASSETS: AssetData[] = [
   {
     name: "Rayquaza Gold Star",
     symbol: "RAY10-DS-2005",
+    tokenId: 9,
     grade: 10,
     price: 42_500.00,
     change: +3_100.00,
@@ -330,6 +341,7 @@ export const ASSETS: AssetData[] = [
   {
     name: "Tom Brady RC",
     symbol: "TB12-BOWM-2000",
+    tokenId: 10,
     grade: 10,
     price: 780_000.00,
     change: +34_000.00,
@@ -343,6 +355,7 @@ export const ASSETS: AssetData[] = [
   {
     name: "Umbreon Gold Star",
     symbol: "UMB10-POP-2005",
+    tokenId: 11,
     grade: 10,
     price: 12_800.00,
     change: -640.00,
@@ -356,6 +369,7 @@ export const ASSETS: AssetData[] = [
   {
     name: "Wembanyama RC",
     symbol: "WEM10-PRIZM-2023",
+    tokenId: 12,
     grade: 10,
     price: 8_900.00,
     change: +1_200.00,

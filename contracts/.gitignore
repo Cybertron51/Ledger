@@ -1,0 +1,9 @@
+# Foundry build artifacts
+out/
+cache/
+
+# Environment — never commit private keys
+.env
+
+# Broadcast logs (contain tx hashes — commit if you want a deploy record)
+# broadcast/

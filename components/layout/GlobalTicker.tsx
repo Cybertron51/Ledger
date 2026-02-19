@@ -111,6 +111,7 @@ export function GlobalTicker({ items }: GlobalTickerProps) {
             ? item
             : tickPrice({
                 ...item,
+                tokenId: 0,
                 volume24h: 1,
                 high24h: item.price * 1.05,
                 low24h: item.price * 0.95,

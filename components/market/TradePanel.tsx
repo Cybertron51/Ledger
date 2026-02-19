@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { CheckCircle, Lock } from "lucide-react";
+import { CheckCircle, Lock, Loader2, ExternalLink } from "lucide-react";
 import { colors } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -12,7 +12,14 @@ interface TradePanelProps {
   onRequestSignIn?: () => void;
 }
 
-type Stage = "form" | "review" | "confirmed";
+type Stage = "form" | "review" | "submitting" | "confirmed" | "error";
+
+interface OrderResult {
+  status: "queued" | "settled";
+  txHash?: string;
+  makerAddress?: string;
+  message?: string;
+}
 
 export function TradePanel({ asset, onRequestSignIn }: TradePanelProps) {
   const { user, isAuthenticated, updateBalance } = useAuth();
@@ -22,11 +29,14 @@ export function TradePanel({ asset, onRequestSignIn }: TradePanelProps) {
   const [quantity, setQuantity] = useState(1);
   const [limitPrice, setLimitPrice] = useState(asset.price);
   const [stage, setStage] = useState<Stage>("form");
+  const [result, setResult] = useState<OrderResult | null>(null);
+  const [errorMsg, setErrorMsg] = useState("");
 
   // Reset to form when asset changes
   useEffect(() => {
     setLimitPrice(asset.price);
     setStage("form");
+    setResult(null);
   }, [asset.symbol, asset.price]);
 
   const estPrice =
@@ -51,29 +61,123 @@ export function TradePanel({ asset, onRequestSignIn }: TradePanelProps) {
     setStage("review");
   }
 
-  function handleConfirm() {
-    if (isBuy) updateBalance(-total);
-    else updateBalance(total);
-    setStage("confirmed");
-    setTimeout(() => setStage("form"), 3000);
+  async function handleConfirm() {
+    if (!user) return;
+    setStage("submitting");
+    setErrorMsg("");
+
+    try {
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId:   user.id,
+          tokenId:  asset.tokenId,
+          priceUsd: estPrice,
+          isBuy,
+          quantity,
+          cardName: asset.name,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error ?? "Order failed");
+      }
+
+      // Update local USD balance optimistically
+      if (isBuy) updateBalance(-total);
+      else updateBalance(total);
+
+      setResult(data);
+      setStage("confirmed");
+      setTimeout(() => {
+        setStage("form");
+        setResult(null);
+      }, 6000);
+    } catch (err) {
+      setErrorMsg(err instanceof Error ? err.message : "Something went wrong");
+      setStage("error");
+    }
   }
 
-  // ── Confirmed state ──────────────────────────────────
-  if (stage === "confirmed") {
+  // ── Error state ──────────────────────────────────────────
+  if (stage === "error") {
+    return (
+      <div className="flex flex-col gap-3 p-3">
+        <p className="text-[12px] font-semibold" style={{ color: colors.red }}>
+          Order Failed
+        </p>
+        <p className="text-[11px]" style={{ color: colors.textMuted }}>
+          {errorMsg}
+        </p>
+        <button
+          onClick={() => setStage("form")}
+          className="w-full rounded-[10px] py-[9px] text-[12px] font-semibold"
+          style={{ background: colors.surfaceRaised, color: colors.textPrimary, border: `1px solid ${colors.border}` }}
+        >
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
+  // ── Confirmed state ──────────────────────────────────────
+  if (stage === "confirmed" && result) {
     return (
       <div className="flex flex-col items-center gap-3 px-3 py-8 text-center">
         <CheckCircle size={36} strokeWidth={1.5} style={{ color: colors.green }} />
         <p className="text-[14px] font-bold" style={{ color: colors.textPrimary }}>
           Order Confirmed
         </p>
-        <p className="text-[12px]" style={{ color: colors.textSecondary }}>
-          {isBuy ? "Added to" : "Removed from"} your portfolio.
+        <p className="text-[11px]" style={{ color: colors.textSecondary }}>
+          {result.status === "settled"
+            ? "Settled on-chain · ownership transferred"
+            : "In order book · awaiting match"}
+        </p>
+        {result.txHash && (
+          <a
+            href={`https://sepolia.basescan.org/tx/${result.txHash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-1 text-[11px] font-medium"
+            style={{ color: colors.green }}
+          >
+            View transaction
+            <ExternalLink size={10} />
+          </a>
+        )}
+        <p className="mt-1 text-[10px]" style={{ color: colors.textMuted }}>
+          {result.txHash
+            ? result.txHash.slice(0, 10) + "…" + result.txHash.slice(-8)
+            : result.message}
         </p>
       </div>
     );
   }
 
-  // ── Review state ─────────────────────────────────────
+  // ── Submitting state ─────────────────────────────────────
+  if (stage === "submitting") {
+    return (
+      <div className="flex flex-col items-center gap-3 px-3 py-8 text-center">
+        <Loader2
+          size={32}
+          strokeWidth={1.5}
+          className="animate-spin"
+          style={{ color: colors.green }}
+        />
+        <p className="text-[13px] font-semibold" style={{ color: colors.textPrimary }}>
+          Submitting Order…
+        </p>
+        <p className="text-[11px]" style={{ color: colors.textMuted }}>
+          Signing &amp; broadcasting to order book
+        </p>
+      </div>
+    );
+  }
+
+  // ── Review state ─────────────────────────────────────────
   if (stage === "review") {
     return (
       <div className="flex flex-col gap-3 p-3">
@@ -86,11 +190,11 @@ export function TradePanel({ asset, onRequestSignIn }: TradePanelProps) {
           style={{ borderColor: colors.border }}
         >
           {[
-            { label: "Action",    value: isBuy ? "Buy" : "Sell",          accent: true },
-            { label: "Card",      value: asset.name,                       accent: false },
-            { label: "Quantity",  value: `${quantity} cop.`,               accent: false },
-            { label: "Order",     value: orderType === "market" ? "Market" : `Limit @ ${formatCurrency(limitPrice)}`, accent: false },
-            { label: "Est. Price",value: formatCurrency(estPrice),         accent: false },
+            { label: "Action",     value: isBuy ? "Buy" : "Sell",          accent: true },
+            { label: "Card",       value: asset.name,                       accent: false },
+            { label: "Quantity",   value: `${quantity} cop.`,               accent: false },
+            { label: "Order",      value: orderType === "market" ? "Market" : `Limit @ ${formatCurrency(limitPrice)}`, accent: false },
+            { label: "Est. Price", value: formatCurrency(estPrice),         accent: false },
           ].map((row, i, arr) => (
             <div
               key={row.label}
@@ -147,7 +251,7 @@ export function TradePanel({ asset, onRequestSignIn }: TradePanelProps) {
     );
   }
 
-  // ── Form state ───────────────────────────────────────
+  // ── Form state ───────────────────────────────────────────
   return (
     <div className="flex flex-col gap-3 p-3">
       {/* Available balance */}
