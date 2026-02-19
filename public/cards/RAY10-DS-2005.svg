@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 168" width="120" height="168">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#14532D"/>
+      <stop offset="100%" stop-color="#78350F"/>
+    </linearGradient>
+    <linearGradient id="goldSheen" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F5C842" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#F5C842" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="120" height="168" rx="8" fill="url(#bg)"/>
+  <!-- Gold sheen overlay -->
+  <rect width="120" height="168" rx="8" fill="url(#goldSheen)"/>
+  <!-- Outer decorative border -->
+  <rect x="5" y="5" width="110" height="158" rx="6" fill="none" stroke="#F5C842" stroke-opacity="0.45" stroke-width="1"/>
+  <!-- Inner decorative border -->
+  <rect x="9" y="9" width="102" height="150" rx="4" fill="none" stroke="#4ADE80" stroke-opacity="0.35" stroke-width="0.75"/>
+  <!-- Accent band -->
+  <rect x="9" y="9" width="102" height="18" rx="4" fill="#F5C842" fill-opacity="0.1"/>
+  <!-- Star symbol -->
+  <text x="60" y="52" text-anchor="middle" font-family="system-ui" font-size="20" fill="#F5C842" fill-opacity="0.7">★</text>
+  <!-- Card name -->
+  <text x="60" y="96" text-anchor="middle" font-family="'Inter', system-ui, sans-serif" font-size="11" font-weight="700" fill="#FFFFFF" letter-spacing="0.5">Rayquaza</text>
+  <text x="60" y="110" text-anchor="middle" font-family="'Inter', system-ui, sans-serif" font-size="8.5" font-weight="600" fill="#F5C842" letter-spacing="0.3">Gold Star</text>
+  <!-- Set label -->
+  <text x="60" y="148" text-anchor="middle" font-family="'Inter', system-ui, sans-serif" font-size="7.5" font-weight="500" fill="#FFFFFF" fill-opacity="0.6" letter-spacing="0.5">DELTA SPECIES 2005</text>
+</svg>
