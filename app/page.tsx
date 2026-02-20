@@ -4,8 +4,12 @@
  * LEDGER — Market Home
  *
  * Two views toggled by the user:
- *   Simple   — casual browse + one-tap trade (default)
+ *   Simple   — portfolio-first casual browse (default)
  *   Advanced — full 3-column trading terminal
+ *
+ * The toggle always lives in the same physical position:
+ *   top of the right sidebar (above "Order Book") in advanced mode,
+ *   and the equivalent top-right corner in simple mode.
  */
 
 import { useState, useEffect, useMemo } from "react";
@@ -31,7 +35,7 @@ import { formatCurrency, cn } from "@/lib/utils";
 type ViewMode = "simple" | "advanced";
 
 // ─────────────────────────────────────────────────────────
-// View toggle
+// View toggle — same component used in both layouts
 // ─────────────────────────────────────────────────────────
 
 function ViewToggle({ mode, onChange }: { mode: ViewMode; onChange: (m: ViewMode) => void }) {
@@ -144,9 +148,9 @@ export default function MarketPage() {
         className="overflow-y-auto"
         style={{ minHeight: `calc(100dvh - ${chromeOffset})` }}
       >
-        {/* Toggle bar */}
+        {/* Toggle — top-right, same position as in advanced view */}
         <div
-          className="sticky top-0 z-[10] flex items-center justify-end border-b px-4 py-2"
+          className="sticky top-0 z-[10] flex items-center justify-end border-b px-4 py-[9px]"
           style={{ background: colors.background, borderColor: colors.border }}
         >
           <ViewToggle mode={viewMode} onChange={handleViewChange} />
@@ -154,14 +158,8 @@ export default function MarketPage() {
 
         <SimpleView
           assets={assets}
-          selected={selected}
-          onSelect={setSelectedSymbol}
-          flashMap={flashMap}
           sparklines={sparklines}
-          chartData={chartData}
-          isUp={isUp}
-          range={range}
-          onRangeChange={setRange}
+          flashMap={flashMap}
           onRequestSignIn={() => setShowSignIn(true)}
         />
 
@@ -171,7 +169,7 @@ export default function MarketPage() {
   }
 
   // ─────────────────────────────────────────────────────────
-  // Advanced view (existing 3-column terminal)
+  // Advanced view — 3-column terminal
   // ─────────────────────────────────────────────────────────
 
   return (
@@ -184,21 +182,16 @@ export default function MarketPage() {
         className="flex flex-col overflow-y-auto border-r"
         style={{ width: 240, minWidth: 240, borderColor: colors.border, background: colors.background }}
       >
-        {/* Header */}
         <div
-          className="sticky top-0 z-[1] flex items-center justify-between border-b px-4 py-[10px]"
+          className="sticky top-0 z-[1] flex items-center gap-[6px] border-b px-4 py-[10px]"
           style={{ background: colors.background, borderColor: colors.border }}
         >
-          <div className="flex items-center gap-[6px]">
-            <Zap size={11} strokeWidth={2.5} style={{ color: colors.green }} />
-            <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: colors.green }}>
-              Live Market
-            </span>
-          </div>
-          <ViewToggle mode={viewMode} onChange={handleViewChange} />
+          <Zap size={11} strokeWidth={2.5} style={{ color: colors.green }} />
+          <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: colors.green }}>
+            Live Market
+          </span>
         </div>
 
-        {/* Asset rows */}
         {assets.map((asset) => {
           const assetUp = asset.change >= 0;
           const isSel = asset.symbol === selectedSymbol;
@@ -251,7 +244,6 @@ export default function MarketPage() {
 
       {/* ── CENTER: Chart + Stats + Grid ─────────────────── */}
       <main className="flex min-w-0 flex-1 flex-col overflow-y-auto" style={{ background: colors.background }}>
-        {/* Asset header */}
         <div className="flex flex-wrap items-start justify-between gap-4 border-b px-6 py-4"
           style={{ borderColor: colors.border }}>
           <div>
@@ -288,12 +280,10 @@ export default function MarketPage() {
           </div>
         </div>
 
-        {/* Price chart */}
         <div className="px-6 pt-5 pb-2">
           <PriceChart data={chartData} isUp={isUp} range={range} onRangeChange={setRange} />
         </div>
 
-        {/* Stats row */}
         <div className="mx-6 my-3 grid grid-cols-4 overflow-hidden rounded-[10px] border"
           style={{ borderColor: colors.border, background: colors.surface }}>
           {[
@@ -317,7 +307,6 @@ export default function MarketPage() {
           ))}
         </div>
 
-        {/* All assets grid */}
         <div className="px-6 pb-8">
           <h2 className="mb-3 text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: colors.textMuted }}>
             All Assets
@@ -359,24 +348,28 @@ export default function MarketPage() {
         </div>
       </main>
 
-      {/* ── RIGHT: Order book + Trade panel ──────────────── */}
+      {/* ── RIGHT: Toggle + Order book + Trade panel ─────── */}
       <aside
         className="flex flex-col overflow-hidden border-l"
         style={{ width: 280, minWidth: 280, borderColor: colors.border, background: colors.background }}
       >
+        {/* Toggle — top of right sidebar, above order book */}
         <div
-          className="flex flex-1 flex-col overflow-hidden border-b"
-          style={{ borderColor: colors.border }}
+          className="flex items-center justify-between border-b px-3 py-[9px]"
+          style={{ background: colors.background, borderColor: colors.border }}
         >
-          <div className="border-b px-3 py-[10px]" style={{ background: colors.background, borderColor: colors.border }}>
-            <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: colors.textMuted }}>
-              Order Book
-            </span>
-          </div>
+          <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: colors.textMuted }}>
+            Order Book
+          </span>
+          <ViewToggle mode={viewMode} onChange={handleViewChange} />
+        </div>
+
+        <div className="flex flex-1 flex-col overflow-hidden border-b" style={{ borderColor: colors.border }}>
           <div className="flex-1 overflow-y-auto">
             <OrderBook orderBook={orderBook} />
           </div>
         </div>
+
         <div className="overflow-y-auto">
           <TradePanel asset={selected} onRequestSignIn={() => setShowSignIn(true)} />
         </div>
