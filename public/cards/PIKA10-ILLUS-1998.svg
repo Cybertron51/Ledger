@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 168" width="120" height="168">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F5C800"/>
+      <stop offset="50%" stop-color="#C8960A"/>
+      <stop offset="100%" stop-color="#7B5200"/>
+    </linearGradient>
+    <linearGradient id="shine" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="40%" r="45%">
+      <stop offset="0%" stop-color="#FFE566" stop-opacity="0.4"/>
+      <stop offset="100%" stop-color="#FFE566" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <!-- Background -->
+  <rect width="120" height="168" rx="8" fill="url(#bg)"/>
+  <!-- Glow -->
+  <rect width="120" height="168" rx="8" fill="url(#glow)"/>
+  <!-- Shine overlay -->
+  <rect width="120" height="168" rx="8" fill="url(#shine)"/>
+  <!-- Outer border (gold) -->
+  <rect x="5" y="5" width="110" height="158" rx="6" fill="none" stroke="#FFE566" stroke-opacity="0.65" stroke-width="1.5"/>
+  <!-- Inner border -->
+  <rect x="9" y="9" width="102" height="150" rx="4" fill="none" stroke="#FFD700" stroke-opacity="0.4" stroke-width="0.75"/>
+  <!-- Gold accent band -->
+  <rect x="9" y="9" width="102" height="18" rx="4" fill="#FFE566" fill-opacity="0.15"/>
+  <!-- ILLUSTRATOR stamp -->
+  <rect x="22" y="14" width="76" height="10" rx="3" fill="#CC8800" fill-opacity="0.6"/>
+  <text x="60" y="22" text-anchor="middle" font-family="'Inter', system-ui, sans-serif" font-size="6.5" font-weight="800" fill="#FFE566" letter-spacing="1.5">ILLUSTRATOR</text>
+  <!-- Cheek circles (Pikachu) -->
+  <ellipse cx="40" cy="62" rx="9" ry="7" fill="#FF6B35" fill-opacity="0.55"/>
+  <ellipse cx="80" cy="62" rx="9" ry="7" fill="#FF6B35" fill-opacity="0.55"/>
+  <!-- Body glow -->
+  <ellipse cx="60" cy="58" rx="20" ry="24" fill="#FFFFFF" fill-opacity="0.06"/>
+  <!-- Lightning bolt -->
+  <polygon points="64,34 56,50 62,50 57,68 68,48 62,48" fill="#FFE566" fill-opacity="0.35"/>
+  <!-- Card name -->
+  <text x="60" y="96" text-anchor="middle" font-family="'Inter', system-ui, sans-serif" font-size="12" font-weight="800" fill="#FFFFFF" letter-spacing="0.3">Pikachu</text>
+  <text x="60" y="110" text-anchor="middle" font-family="'Inter', system-ui, sans-serif" font-size="8" font-weight="700" fill="#FFE566" letter-spacing="0.5">Illustrator</text>
+  <!-- Set label -->
+  <text x="60" y="148" text-anchor="middle" font-family="'Inter', system-ui, sans-serif" font-size="7" font-weight="500" fill="#FFFFFF" fill-opacity="0.55" letter-spacing="0.5">PROMO 1998</text>
+  <!-- Stars -->
+  <text x="23" y="130" font-family="system-ui" font-size="8" fill="#FFE566" fill-opacity="0.5">★</text>
+  <text x="89" y="130" font-family="system-ui" font-size="8" fill="#FFE566" fill-opacity="0.5">★</text>
+</svg>

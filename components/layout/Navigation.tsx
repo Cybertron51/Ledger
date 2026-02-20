@@ -5,7 +5,7 @@
  *
  * Contains:
  *  - Ledger wordmark + logo mark
- *  - Primary nav links (Market, Vault, Portfolio)
+ *  - Primary nav links (Market, Portfolio)
  *  - Search input (future: command palette)
  *  - Account / wallet avatar
  */
@@ -15,7 +15,6 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   BarChart2,
-  Vault,
   TrendingUp,
   Search,
   Bell,
@@ -36,11 +35,6 @@ const NAV_LINKS: NavLink[] = [
     href: "/",
     label: "Market",
     icon: <TrendingUp size={15} strokeWidth={2} />,
-  },
-  {
-    href: "/vault",
-    label: "Vault",
-    icon: <Vault size={15} strokeWidth={2} />,
   },
   {
     href: "/portfolio",
