@@ -211,13 +211,13 @@ export const motion = {
 
 export const layout = {
   /** Global ticker bar height */
-  tickerHeight:   "36px",
+  tickerHeight:   "40px",
 
   /** Top navigation bar height (below ticker) */
   navHeight:      "56px",
 
   /** Combined chrome height for page offset calculations */
-  chromeHeight:   "92px",
+  chromeHeight:   "96px",
 
   /** Main content max-width */
   maxWidth:       "1440px",

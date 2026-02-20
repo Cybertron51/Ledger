@@ -11,6 +11,7 @@
 
 import { useState, useEffect, useMemo } from "react";
 import { TrendingUp, TrendingDown, Zap } from "lucide-react";
+import { SignInModal } from "@/components/auth/SignInModal";
 
 import {
   ASSETS,
@@ -37,6 +38,7 @@ export default function MarketPage() {
   const [selectedSymbol, setSelectedSymbol] = useState<string>(ASSETS[0].symbol);
   const [range, setRange] = useState<TimeRange>("1D");
   const [flashMap, setFlashMap] = useState<Record<string, "up" | "down">>({});
+  const [showSignIn, setShowSignIn] = useState(false);
 
   const selected = assets.find((a) => a.symbol === selectedSymbol) ?? assets[0];
   const isUp = selected.change >= 0;
@@ -421,9 +423,12 @@ export default function MarketPage() {
 
         {/* Trade panel */}
         <div className="overflow-y-auto">
-          <TradePanel asset={selected} />
+          <TradePanel asset={selected} onRequestSignIn={() => setShowSignIn(true)} />
         </div>
       </aside>
+
+      {/* Sign-in modal triggered from trade panel */}
+      {showSignIn && <SignInModal onClose={() => setShowSignIn(false)} />}
     </div>
   );
 }
