@@ -11,7 +11,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart2, Vault, TrendingUp, Search, Bell, ChevronDown } from "lucide-react";
+import { BarChart2, TrendingUp, Search, Bell, ChevronDown } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { colors, layout } from "@/lib/theme";
 import { useAuth } from "@/lib/auth";
@@ -29,7 +29,6 @@ interface NavLink {
 
 const NAV_LINKS: NavLink[] = [
   { href: "/",          label: "Market",    icon: <TrendingUp size={15} strokeWidth={2} /> },
-  { href: "/vault",     label: "Vault",     icon: <Vault      size={15} strokeWidth={2} /> },
   { href: "/portfolio", label: "Portfolio", icon: <BarChart2  size={15} strokeWidth={2} /> },
 ];
 
