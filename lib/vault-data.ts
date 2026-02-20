@@ -21,6 +21,22 @@ export interface VaultHolding {
   listingPrice?: number;
 }
 
+/** Reads scanned cards pre-registered via /scan from localStorage. Safe to call on server (returns []). */
+export function getScannedHoldings(): VaultHolding[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem("ledger-scanned-cards");
+    return raw ? (JSON.parse(raw) as VaultHolding[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Merges static vault holdings with any locally-scanned in-transit cards. */
+export function getAllHoldings(): VaultHolding[] {
+  return [...VAULT_HOLDINGS, ...getScannedHoldings()];
+}
+
 export const VAULT_HOLDINGS: VaultHolding[] = [
   {
     id: "v1",

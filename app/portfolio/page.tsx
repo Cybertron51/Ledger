@@ -16,7 +16,7 @@ import Image from "next/image";
 
 import { ASSETS, tickPrice, generateHistory, type TimeRange, type AssetData } from "@/lib/market-data";
 import { PriceChart } from "@/components/market/PriceChart";
-import { VAULT_HOLDINGS, type VaultHolding } from "@/lib/vault-data";
+import { VAULT_HOLDINGS, getScannedHoldings, type VaultHolding } from "@/lib/vault-data";
 import { colors, layout, psaGradeColor, zIndex } from "@/lib/theme";
 import { formatCurrency, cn } from "@/lib/utils";
 
@@ -64,6 +64,17 @@ export default function PortfolioPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [activities, setActivities] = useState<Activity[]>([]);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  // ── Load scanned in-transit cards from localStorage ───
+  useEffect(() => {
+    const scanned = getScannedHoldings();
+    if (scanned.length === 0) return;
+    setHoldings((prev) => {
+      const existingIds = new Set(prev.map((h) => h.id));
+      const newCards = scanned.filter((h) => !existingIds.has(h.id));
+      return newCards.length > 0 ? [...prev, ...newCards] : prev;
+    });
+  }, []);
 
   // ── Live price tick ────────────────────────────────────
   useEffect(() => {
