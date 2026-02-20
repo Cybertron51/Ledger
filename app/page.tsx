@@ -353,15 +353,22 @@ export default function MarketPage() {
         className="flex flex-col overflow-hidden border-l"
         style={{ width: 280, minWidth: 280, borderColor: colors.border, background: colors.background }}
       >
-        {/* Toggle — top of right sidebar, above order book */}
+        {/* Toggle row */}
         <div
-          className="flex items-center justify-between border-b px-3 py-[9px]"
+          className="flex items-center justify-end border-b px-3 py-[9px]"
           style={{ background: colors.background, borderColor: colors.border }}
+        >
+          <ViewToggle mode={viewMode} onChange={handleViewChange} />
+        </div>
+
+        {/* Order Book label */}
+        <div
+          className="border-b px-3 py-[8px]"
+          style={{ borderColor: colors.border }}
         >
           <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: colors.textMuted }}>
             Order Book
           </span>
-          <ViewToggle mode={viewMode} onChange={handleViewChange} />
         </div>
 
         <div className="flex flex-1 flex-col overflow-hidden border-b" style={{ borderColor: colors.border }}>
