@@ -14,7 +14,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { X, Search, Plus, Camera, Upload, ArrowDownLeft, ArrowUpRight, Tag } from "lucide-react";
 import Image from "next/image";
 
-import { ASSETS, tickPrice, generateHistory, type TimeRange, type AssetData } from "@/lib/market-data";
+import { tickPrice, generateHistory, type TimeRange, type AssetData } from "@/lib/market-data";
 import { PriceChart } from "@/components/market/PriceChart";
 import { getScannedHoldings, type VaultHolding } from "@/lib/vault-data";
 import { usePortfolio } from "@/lib/portfolio-context";
@@ -32,7 +32,7 @@ type ModalState =
   | null;
 
 type SortBy = "value" | "gain" | "name" | "date";
-type StatusFilter = "all" | "in_vault" | "listed" | "in_transit";
+type StatusFilter = "all" | "in_vault" | "listed" | "in_transit" | "pending_authentication" | "shipped" | "received" | "authenticating" | "tradable" | "withdrawn";
 
 interface Activity {
   id: string;
@@ -57,7 +57,8 @@ interface DepositForm {
 
 export default function PortfolioPage() {
   const { holdings, addHolding, updateHolding } = usePortfolio();
-  const [assets, setAssets] = useState(ASSETS);
+  const [assets, setAssets] = useState<AssetData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [modalState, setModalState] = useState<ModalState>(null);
   const [search, setSearch] = useState("");
@@ -66,13 +67,28 @@ export default function PortfolioPage() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const searchRef = useRef<HTMLInputElement>(null);
 
+  // ── Load market metadata ──────────────────────────────
+  useEffect(() => {
+    async function fetchAssets() {
+      setIsLoading(true);
+      const { getMarketCards } = await import("@/lib/db/cards");
+      const { mapDBCardToAssetData } = await import("@/lib/market-data");
+      const dbCards = await getMarketCards();
+      if (dbCards && dbCards.length > 0) {
+        setAssets(dbCards.map(mapDBCardToAssetData));
+      }
+      setIsLoading(false);
+    }
+    fetchAssets();
+  }, []);
+
   // ── Load scanned in-transit cards from localStorage ───
   useEffect(() => {
     const scanned = getScannedHoldings();
     if (scanned.length === 0) return;
     const existingIds = new Set(holdings.map((h) => h.id));
     scanned.filter((h) => !existingIds.has(h.id)).forEach(addHolding);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Live price tick ────────────────────────────────────
@@ -180,7 +196,7 @@ export default function PortfolioPage() {
 
   // ── Deposit handler ────────────────────────────────────
   function confirmDeposit(form: DepositForm) {
-    const asset = ASSETS.find((a) => a.symbol === form.symbol);
+    const asset = assets.find((a) => a.symbol === form.symbol);
     if (!asset) return;
     const newHolding: VaultHolding = {
       id: `v${Date.now()}`,
@@ -206,6 +222,19 @@ export default function PortfolioPage() {
       timestamp: new Date(),
     }]);
     setModalState(null);
+  }
+
+  if (isLoading) {
+    return (
+      <div
+        className="flex items-center justify-center"
+        style={{ minHeight: `calc(100dvh - ${layout.chromeHeight})`, background: colors.background }}
+      >
+        <p style={{ color: colors.textMuted, fontSize: 13, fontWeight: 600 }}>
+          Loading portfolio data...
+        </p>
+      </div>
+    );
   }
 
   return (
@@ -305,9 +334,13 @@ export default function PortfolioPage() {
           <div className="flex gap-1 flex-wrap border-b px-3 py-2" style={{ borderColor: colors.borderSubtle }}>
             {([
               { key: "all" as const, label: "All" },
-              { key: "in_vault" as const, label: "In Vault" },
+              { key: "pending_authentication" as const, label: "Pending" },
+              { key: "in_transit" as const, label: "Transit" }, // Keep for legacy but map to shipped/received mentally or remove
+              { key: "shipped" as const, label: "Shipped" },
+              { key: "authenticating" as const, label: "Authenticating" },
+              { key: "in_vault" as const, label: "Vaulted" },
+              { key: "tradable" as const, label: "Tradable" },
               { key: "listed" as const, label: "Listed" },
-              { key: "in_transit" as const, label: "Transit" },
             ]).map(({ key, label }) => {
               const count = key === "all" ? holdings.length : holdings.filter((h) => h.status === key).length;
               const isActive = statusFilter === key;
@@ -389,14 +422,15 @@ export default function PortfolioPage() {
                         {holding.name}
                       </p>
                       <div className="flex items-center gap-1 shrink-0">
-                        {/* Status dot */}
                         <div
                           className="rounded-full"
                           style={{
                             width: 6, height: 6, flexShrink: 0,
-                            background: holding.status === "in_vault" ? colors.green
-                              : holding.status === "listed" ? colors.gold
-                              : "#F5C842",
+                            background:
+                              holding.status === "tradable" || holding.status === "in_vault" ? colors.green
+                                : holding.status === "listed" ? colors.gold
+                                  : holding.status === "withdrawn" ? colors.textMuted
+                                    : "#F5C842", // pending, shipped, received, authenticating
                           }}
                         />
                         <div
@@ -471,7 +505,7 @@ export default function PortfolioPage() {
             onClick={(e) => e.stopPropagation()}
             style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 14, width: 440, maxHeight: "90vh", overflowY: "auto", padding: 24 }}
           >
-            <DepositModal assets={ASSETS} onCancel={() => setModalState(null)} onConfirm={confirmDeposit} />
+            <DepositModal assets={assets} onCancel={() => setModalState(null)} onConfirm={confirmDeposit} />
           </div>
         </div>
       )}
@@ -542,10 +576,10 @@ function PortfolioOverview({ holdings, priceMap, assets, activities, onSelectCar
   const weightedChangePct =
     totalValue > 0
       ? holdings.reduce((sum, h) => {
-          const val = priceMap[h.symbol] ?? 0;
-          const asset = assets.find((a) => a.symbol === h.symbol);
-          return sum + (val / totalValue) * (asset?.changePct ?? 0);
-        }, 0)
+        const val = priceMap[h.symbol] ?? 0;
+        const asset = assets.find((a) => a.symbol === h.symbol);
+        return sum + (val / totalValue) * (asset?.changePct ?? 0);
+      }, 0)
       : 0;
 
   const chartData = generateHistory(totalValue, weightedChangePct, range, "PORTFOLIO");
@@ -860,15 +894,15 @@ function PortfolioOverview({ holdings, priceMap, assets, activities, onSelectCar
             const secondsAgo = Math.floor((Date.now() - act.timestamp.getTime()) / 1000);
             const timeLabel =
               secondsAgo < 60 ? "just now"
-              : secondsAgo < 3600 ? `${Math.floor(secondsAgo / 60)}m ago`
-              : secondsAgo < 86400 ? `${Math.floor(secondsAgo / 3600)}h ago`
-              : `${Math.floor(secondsAgo / 86400)}d ago`;
+                : secondsAgo < 3600 ? `${Math.floor(secondsAgo / 60)}m ago`
+                  : secondsAgo < 86400 ? `${Math.floor(secondsAgo / 3600)}h ago`
+                    : `${Math.floor(secondsAgo / 86400)}d ago`;
 
             const description =
               act.type === "deposit" ? `Deposited ${act.cardName} PSA ${act.grade} at ${formatCurrency(act.amount)}`
-              : act.type === "listed" ? `${act.cardName} PSA ${act.grade} listed for ${formatCurrency(act.amount)}`
-              : act.type === "cancelled" ? `Listing cancelled for ${act.cardName} PSA ${act.grade}`
-              : `${act.cardName} PSA ${act.grade} withdrawal requested`;
+                : act.type === "listed" ? `${act.cardName} PSA ${act.grade} listed for ${formatCurrency(act.amount)}`
+                  : act.type === "cancelled" ? `Listing cancelled for ${act.cardName} PSA ${act.grade}`
+                    : `${act.cardName} PSA ${act.grade} withdrawal requested`;
 
             return (
               <div
@@ -919,11 +953,17 @@ function DetailPanel({ holding, currentValue, changePct, onOpenListModal, onCanc
   const isGain = gain >= 0;
   const gradeColor = psaGradeColor[holding.grade as 8 | 9 | 10] ?? colors.textSecondary;
 
-  const statusConfig = {
-    in_vault: { label: "In Vault", bg: colors.greenMuted, color: colors.green },
-    in_transit: { label: "In Transit", bg: "rgba(245,200,66,0.15)", color: "#F5C842" },
+  const statusConfig: Record<VaultHolding["status"], { label: string; bg: string; color: string }> = {
+    pending_authentication: { label: "Pending Setup", bg: "rgba(245,200,66,0.15)", color: "#F5C842" },
+    shipped: { label: "Shipped", bg: "rgba(245,200,66,0.15)", color: "#F5C842" },
+    received: { label: "Received", bg: "rgba(245,200,66,0.15)", color: "#F5C842" },
+    authenticating: { label: "Authenticating", bg: "rgba(245,200,66,0.15)", color: "#F5C842" },
+    in_vault: { label: "In Vault", bg: colors.greenMuted, color: colors.green }, // legacy/fallback
+    tradable: { label: "Tradable", bg: colors.greenMuted, color: colors.green },
+    in_transit: { label: "In Transit", bg: "rgba(245,200,66,0.15)", color: "#F5C842" }, // legacy/fallback for withdrawal
+    withdrawn: { label: "Withdrawn", bg: colors.surfaceOverlay, color: colors.textMuted },
     listed: { label: "Listed for Sale", bg: colors.surface, color: colors.textSecondary },
-  } as const;
+  };
 
   const status = statusConfig[holding.status];
 
@@ -983,7 +1023,7 @@ function DetailPanel({ holding, currentValue, changePct, onOpenListModal, onCanc
 
       {/* Action buttons */}
       <div className="mt-5 flex gap-3">
-        {holding.status === "in_vault" && (
+        {["in_vault", "tradable"].includes(holding.status) && (
           <button onClick={() => onOpenListModal(holding.id)} className="flex-1 rounded-[10px] px-4 py-[10px] text-[13px] font-semibold transition-colors duration-150" style={{ background: colors.green, color: colors.textInverse, cursor: "pointer", border: `1px solid ${colors.green}` }}>
             List for Sale
           </button>
@@ -993,12 +1033,12 @@ function DetailPanel({ holding, currentValue, changePct, onOpenListModal, onCanc
             Cancel Listing
           </button>
         )}
-        {holding.status === "in_transit" && (
+        {["pending_authentication", "shipped", "received", "authenticating", "in_transit"].includes(holding.status) && (
           <button disabled className="flex-1 rounded-[10px] px-4 py-[10px] text-[13px] font-semibold" style={{ background: colors.surface, color: colors.textMuted, cursor: "not-allowed", border: `1px solid ${colors.border}` }}>
             List for Sale
           </button>
         )}
-        {holding.status === "in_vault" && (
+        {["in_vault", "tradable"].includes(holding.status) && (
           <button onClick={() => onOpenWithdrawModal(holding.id)} className="flex-1 rounded-[10px] px-4 py-[10px] text-[13px] font-semibold transition-colors duration-150" style={{ background: colors.surface, color: colors.textPrimary, cursor: "pointer", border: `1px solid ${colors.border}` }}>
             Request Withdrawal
           </button>
@@ -1008,9 +1048,9 @@ function DetailPanel({ holding, currentValue, changePct, onOpenListModal, onCanc
             Request Withdrawal
           </button>
         )}
-        {holding.status === "in_transit" && (
+        {["pending_authentication", "shipped", "received", "authenticating", "in_transit"].includes(holding.status) && (
           <button disabled className="flex-1 rounded-[10px] px-4 py-[10px] text-[13px] font-semibold" style={{ background: colors.surface, color: colors.textMuted, cursor: "not-allowed", border: `1px solid ${colors.borderSubtle}` }}>
-            In Transit
+            {status.label}
           </button>
         )}
       </div>
@@ -1108,7 +1148,7 @@ function WithdrawModal({ holding, currentValue, onCancel, onConfirm }: WithdrawM
 // ─────────────────────────────────────────────────────────
 
 interface DepositModalProps {
-  assets: typeof ASSETS;
+  assets: AssetData[];
   onCancel: () => void;
   onConfirm: (form: DepositForm) => void;
 }

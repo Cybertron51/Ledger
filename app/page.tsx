@@ -17,18 +17,19 @@ import { TrendingUp, TrendingDown, Zap, LayoutGrid, BarChart2 } from "lucide-rea
 import { SignInModal } from "@/components/auth/SignInModal";
 import { SimpleView } from "@/components/market/SimpleView";
 import {
-  ASSETS,
   generateHistory,
   generateSparkline,
   generateOrderBook,
   tickPrice,
   type AssetData,
   type TimeRange,
+  type OrderBookRow,
 } from "@/lib/market-data";
 import { SparklineChart } from "@/components/market/SparklineChart";
 import { PriceChart } from "@/components/market/PriceChart";
 import { OrderBook } from "@/components/market/OrderBook";
 import { TradePanel } from "@/components/market/TradePanel";
+import { usePortfolio } from "@/lib/portfolio-context";
 import { colors, layout } from "@/lib/theme";
 import { formatCurrency, cn } from "@/lib/utils";
 
@@ -70,12 +71,14 @@ function ViewToggle({ mode, onChange }: { mode: ViewMode; onChange: (m: ViewMode
 // ─────────────────────────────────────────────────────────
 
 export default function MarketPage() {
-  const [assets, setAssets] = useState<AssetData[]>(ASSETS);
-  const [selectedSymbol, setSelectedSymbol] = useState<string>(ASSETS[0].symbol);
+  const [assets, setAssets] = useState<AssetData[]>([]);
+  const [selectedSymbol, setSelectedSymbol] = useState<string>("");
+  const [isLoading, setIsLoading] = useState(true);
   const [range, setRange] = useState<TimeRange>("1D");
   const [flashMap, setFlashMap] = useState<Record<string, "up" | "down">>({});
   const [showSignIn, setShowSignIn] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("simple");
+  const { holdings } = usePortfolio();
 
   // Persist view preference
   useEffect(() => {
@@ -88,8 +91,27 @@ export default function MarketPage() {
     localStorage.setItem("tash-view-mode", m);
   }
 
-  const selected = assets.find((a) => a.symbol === selectedSymbol) ?? assets[0];
-  const isUp = selected.change >= 0;
+  const selected = assets.find((a) => a.symbol === selectedSymbol) ?? assets[0] ?? null;
+  const isUp = selected ? selected.change >= 0 : false;
+
+  // ── Initial load from Supabase ─────────────────────────
+  useEffect(() => {
+    async function fetchAssets() {
+      setIsLoading(true);
+      const { getMarketCards } = await import("@/lib/db/cards");
+      const { mapDBCardToAssetData } = await import("@/lib/market-data");
+      const dbCards = await getMarketCards();
+      if (dbCards && dbCards.length > 0) {
+        const newAssets = dbCards.map(mapDBCardToAssetData);
+        setAssets(newAssets);
+        setSelectedSymbol((prev) =>
+          newAssets.some(a => a.symbol === prev) ? prev : newAssets[0].symbol
+        );
+      }
+      setIsLoading(false);
+    }
+    fetchAssets();
+  }, []);
 
   // ── Live price ticks ───────────────────────────────────
   useEffect(() => {
@@ -115,32 +137,56 @@ export default function MarketPage() {
 
   // ── Chart data ─────────────────────────────────────────
   const chartData = useMemo(
-    () => generateHistory(selected.price, selected.changePct, range, selected.symbol),
+    () => selected ? generateHistory(selected.price, selected.changePct, range, selected.symbol) : [],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selected.symbol, range]
+    [selected?.symbol, range]
   );
 
   // ── Sparklines (generated once) ────────────────────────
   const sparklines = useMemo(
     () =>
       Object.fromEntries(
-        ASSETS.map((a) => [a.symbol, generateSparkline(a.price, a.changePct, a.symbol)])
+        assets.map((a) => [a.symbol, generateSparkline(a.price, a.changePct, a.symbol)])
       ),
-    []
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [assets.length]
   );
 
   // ── Order book ─────────────────────────────────────────
-  const orderBook = useMemo(
-    () => generateOrderBook(selected.price, selected.symbol),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selected.symbol, Math.round(selected.price / 10)]
-  );
+  const orderBook = useMemo(() => {
+    if (!selected) return null;
+
+    // Inject user's listed cards into the asks
+    const userAsks: OrderBookRow[] = holdings
+      .filter(h => h.symbol === selected.symbol && h.status === "listed" && h.listingPrice)
+      .map(h => ({
+        price: h.listingPrice!,
+        size: 1,
+        total: 1, // Will be recalculated by generateOrderBook
+        depth: 0,
+      }));
+
+    return generateOrderBook(selected.price, selected.symbol, userAsks);
+  }, [selected?.symbol, selected ? Math.round(selected.price / 10) : 0, holdings]);
 
   const chromeOffset = layout.chromeHeight;
 
   // ─────────────────────────────────────────────────────────
   // Simple view
   // ─────────────────────────────────────────────────────────
+
+  if (isLoading || assets.length === 0) {
+    return (
+      <div
+        className="flex items-center justify-center"
+        style={{ minHeight: `calc(100dvh - ${chromeOffset})`, background: colors.background }}
+      >
+        <p style={{ color: colors.textMuted, fontSize: 13, fontWeight: 600 }}>
+          {isLoading ? "Loading market data..." : "No market listings available."}
+        </p>
+      </div>
+    );
+  }
 
   if (viewMode === "simple") {
     return (
@@ -288,8 +334,8 @@ export default function MarketPage() {
           style={{ borderColor: colors.border, background: colors.surface }}>
           {[
             { label: "24H High", value: formatCurrency(selected.high24h) },
-            { label: "24H Low",  value: formatCurrency(selected.low24h) },
-            { label: "Volume",   value: `${selected.volume24h} cop.` },
+            { label: "24H Low", value: formatCurrency(selected.low24h) },
+            { label: "Volume", value: `${selected.volume24h} cop.` },
             { label: "Category", value: selected.category === "pokemon" ? "Pokémon" : "Sports" },
           ].map((stat, i) => (
             <div
@@ -373,12 +419,12 @@ export default function MarketPage() {
 
         <div className="flex flex-1 flex-col overflow-hidden border-b" style={{ borderColor: colors.border }}>
           <div className="flex-1 overflow-y-auto">
-            <OrderBook orderBook={orderBook} />
+            {orderBook && <OrderBook orderBook={orderBook} />}
           </div>
         </div>
 
         <div className="overflow-y-auto">
-          <TradePanel asset={selected} onRequestSignIn={() => setShowSignIn(true)} />
+          {selected && <TradePanel asset={selected} onRequestSignIn={() => setShowSignIn(true)} />}
         </div>
       </aside>
 

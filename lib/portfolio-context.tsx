@@ -11,8 +11,9 @@
  * In production: hydrate from DB on login, persist on every mutation.
  */
 
-import React, { createContext, useContext, useState, useCallback } from "react";
-import { VAULT_HOLDINGS, type VaultHolding } from "@/lib/vault-data";
+import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import { type VaultHolding } from "@/lib/vault-data";
+import { useAuth } from "@/lib/auth";
 
 // ─────────────────────────────────────────────────────────
 // Context type
@@ -39,8 +40,40 @@ const PortfolioContext = createContext<PortfolioContextValue | null>(null);
 // ─────────────────────────────────────────────────────────
 
 export function PortfolioProvider({ children }: { children: React.ReactNode }) {
-  // Start with mock vault holdings so the portfolio page isn't empty on first load
-  const [holdings, setHoldings] = useState<VaultHolding[]>(VAULT_HOLDINGS);
+  const { user, isAuthenticated } = useAuth();
+
+  // Start with mock vault holdings if not authenticated, otherwise empty until load
+  const [holdings, setHoldings] = useState<VaultHolding[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Load from Supabase when user auth state changes
+  useEffect(() => {
+    async function fetchHoldings() {
+      if (!isAuthenticated || !user) {
+        setHoldings([]); // default empty for unauth
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        setIsLoading(true);
+        // Note: getUserVaultHoldings is dynamically imported to avoid circular dependencies in context
+        const { getUserVaultHoldings } = await import("@/lib/db/vault");
+        const data = await getUserVaultHoldings(user.id);
+
+        // Also merge any local scanned cards that haven't been synced?
+        // For simplicity in the escrow demo, we just trust the DB. 
+        setHoldings(data);
+      } catch (err) {
+        console.error("Failed to load portfolio", err);
+        setHoldings([]);
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    fetchHoldings();
+  }, [isAuthenticated, user]);
 
   const addHolding = useCallback((holding: VaultHolding) => {
     setHoldings((prev) => [holding, ...prev]);

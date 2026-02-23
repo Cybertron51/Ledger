@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
-import { ASSETS } from "@/lib/market-data";
+import { getMarketCards } from "@/lib/db/cards";
 
 const client = new Anthropic();
 
@@ -350,7 +350,8 @@ export async function POST(req: NextRequest) {
 
     // Fuzzy-match card name to a known ASSET symbol for live pricing
     const cardNameLower = (card.name ?? "").toLowerCase();
-    const matchedAsset = ASSETS.find((a) => {
+    const dbCards = await getMarketCards() ?? [];
+    const matchedAsset = dbCards.find((a) => {
       const assetName = a.name.toLowerCase();
       const firstWord = assetName.split(" ")[0];
       return (

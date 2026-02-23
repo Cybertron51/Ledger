@@ -28,9 +28,8 @@ interface NavLink {
 }
 
 const NAV_LINKS: NavLink[] = [
-  { href: "/",          label: "Market",    icon: <TrendingUp size={15} strokeWidth={2} /> },
-  { href: "/portfolio", label: "Portfolio", icon: <BarChart2  size={15} strokeWidth={2} /> },
-  { href: "/scan",      label: "Upload",    icon: <Camera     size={15} strokeWidth={2} /> },
+  { href: "/", label: "Market", icon: <TrendingUp size={15} strokeWidth={2} /> },
+  { href: "/scan", label: "Upload", icon: <Camera size={15} strokeWidth={2} /> },
 ];
 
 // ─────────────────────────────────────────────────────────
@@ -182,7 +181,7 @@ export function Navigation() {
           >
             <span className="text-[14px] font-black" style={{ color: colors.textInverse }}>
               t
-</span>
+            </span>
           </div>
           <span
             className="text-[18px] font-bold tracking-tight"
@@ -220,6 +219,24 @@ export function Navigation() {
 
         {/* ── Right Controls ───────────────────────── */}
         <div className="flex items-center gap-2">
+          {/* Portfolio Link */}
+          <Link
+            href="/portfolio"
+            className={cn(
+              "flex items-center gap-[6px] rounded-[10px] px-3 py-[7px]",
+              "text-[13px] font-bold transition-all duration-150 active:scale-[0.98]",
+              "hover:bg-[#1E1E1E]"
+            )}
+            style={{
+              color: pathname.startsWith("/portfolio") ? colors.textPrimary : colors.textSecondary,
+              backgroundColor: pathname.startsWith("/portfolio") ? colors.surface : "transparent",
+              border: `1px solid ${colors.border}`,
+            }}
+          >
+            <BarChart2 size={15} strokeWidth={2} />
+            <span>Portfolio</span>
+          </Link>
+
           {/* Search */}
           <button
             className="flex items-center gap-2 rounded-[10px] border px-3 py-[7px] text-[13px] transition-colors duration-150 hover:border-[#3E3E3E]"

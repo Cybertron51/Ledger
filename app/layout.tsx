@@ -21,8 +21,10 @@ import "./globals.css";
 import { GlobalTicker } from "@/components/layout/GlobalTicker";
 import { Navigation } from "@/components/layout/Navigation";
 import { Providers } from "@/components/providers/Providers";
-import { TOP_PSA10_ASSETS } from "@/lib/ticker-data";
+
 import { layout } from "@/lib/theme";
+import { getMarketCards } from "@/lib/db/cards";
+import { mapDBCardToAssetData } from "@/lib/market-data";
 
 // ─────────────────────────────────────────────────────────
 // Metadata
@@ -54,11 +56,16 @@ export const metadata: Metadata = {
 // Layout Component
 // ─────────────────────────────────────────────────────────
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const dbCards = await getMarketCards({ limit: 12 });
+  const tickerItems = dbCards && dbCards.length > 0
+    ? dbCards.map(mapDBCardToAssetData)
+    : [];
+
   return (
     <html
       lang="en"
@@ -72,7 +79,7 @@ export default function RootLayout({
             className="fixed left-0 right-0 top-0"
             style={{ zIndex: 110 }}
           >
-            <GlobalTicker items={TOP_PSA10_ASSETS} />
+            {tickerItems.length > 0 && <GlobalTicker items={tickerItems} />}
             <Navigation />
           </div>
 

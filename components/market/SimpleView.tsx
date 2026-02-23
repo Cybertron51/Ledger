@@ -16,9 +16,10 @@ import { colors } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { SparklineChart } from "./SparklineChart";
-import { VAULT_HOLDINGS } from "@/lib/vault-data";
+import type { VaultHolding } from "@/lib/vault-data";
 import type { AssetData, PricePoint } from "@/lib/market-data";
 import { generateOrderBook } from "@/lib/market-data";
+import { usePortfolio } from "@/lib/portfolio-context";
 
 // ─────────────────────────────────────────────────────────
 // Types
@@ -46,26 +47,26 @@ function getFillLikelihood(
   let pct: number;
 
   if (side === "buy") {
-    if (price >= bestAsk)        pct = 1;
-    else if (price <= bestBid)   pct = 0.04;
-    else                         pct = (price - bestBid) / (bestAsk - bestBid);
+    if (price >= bestAsk) pct = 1;
+    else if (price <= bestBid) pct = 0.04;
+    else pct = (price - bestBid) / (bestAsk - bestBid);
   } else {
-    if (price <= bestBid)        pct = 1;
-    else if (price >= bestAsk)   pct = 0.04;
-    else                         pct = (bestAsk - price) / (bestAsk - bestBid);
+    if (price <= bestBid) pct = 1;
+    else if (price >= bestAsk) pct = 0.04;
+    else pct = (bestAsk - price) / (bestAsk - bestBid);
   }
 
   pct = Math.min(1, Math.max(0.02, pct));
 
   const label =
     pct >= 0.95 ? "Immediate fill" :
-    pct >= 0.70 ? "High"           :
-    pct >= 0.40 ? "Medium"         :
-    pct >= 0.15 ? "Low"            : "Very low";
+      pct >= 0.70 ? "High" :
+        pct >= 0.40 ? "Medium" :
+          pct >= 0.15 ? "Low" : "Very low";
 
   const barColor =
     pct >= 0.70 ? colors.green :
-    pct >= 0.40 ? "#f59e0b"    : colors.red;
+      pct >= 0.40 ? "#f59e0b" : colors.red;
 
   const hint =
     side === "buy"
@@ -73,8 +74,8 @@ function getFillLikelihood(
         ? "Your bid meets or exceeds the ask — this fills immediately."
         : "Raise your bid closer to the ask to increase fill likelihood."
       : pct >= 0.95
-      ? "Your ask meets or is below the bid — this fills immediately."
-      : "Lower your ask closer to the bid to increase fill likelihood.";
+        ? "Your ask meets or is below the bid — this fills immediately."
+        : "Lower your ask closer to the bid to increase fill likelihood.";
 
   return { pct, label, barColor, hint };
 }
@@ -106,23 +107,23 @@ function TradeModal({
   const bestBid = orderBook.bids[0]?.price ?? asset.price * 0.995;
   const bestAsk = orderBook.asks[orderBook.asks.length - 1]?.price ?? asset.price * 1.005;
 
-  const [side, setSide]         = useState<TradeSide>(initialSide);
+  const [side, setSide] = useState<TradeSide>(initialSide);
   const [priceStr, setPriceStr] = useState(() =>
     (initialSide === "buy" ? bestAsk : bestBid).toFixed(2)
   );
   const [quantity, setQuantity] = useState(1);
-  const [stage, setStage]       = useState<"form" | "submitting" | "confirmed" | "error">("form");
+  const [stage, setStage] = useState<"form" | "submitting" | "confirmed" | "error">("form");
   const [errorMsg, setErrorMsg] = useState("");
-  const [txHash, setTxHash]     = useState<string | undefined>();
+  const [txHash, setTxHash] = useState<string | undefined>();
 
   // Reset price to market default when side changes
   useEffect(() => {
     setPriceStr((side === "buy" ? bestAsk : bestBid).toFixed(2));
   }, [side, bestAsk, bestBid]);
 
-  const price  = parseFloat(priceStr) || 0;
-  const fill   = getFillLikelihood(price, side, bestBid, bestAsk);
-  const total  = price * quantity;
+  const price = parseFloat(priceStr) || 0;
+  const fill = getFillLikelihood(price, side, bestBid, bestAsk);
+  const total = price * quantity;
   const accent = side === "buy" ? colors.green : colors.red;
   const canAfford = side === "sell" || (user?.cashBalance ?? 0) >= total;
 
@@ -134,10 +135,10 @@ function TradeModal({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId:   user.id,
-          tokenId:  asset.tokenId,
+          userId: user.id,
+          tokenId: asset.tokenId,
           priceUsd: price,
-          isBuy:    side === "buy",
+          isBuy: side === "buy",
           quantity,
           cardName: asset.name,
         }),
@@ -146,7 +147,7 @@ function TradeModal({
       if (!res.ok) throw new Error(data.error ?? "Order failed");
 
       if (side === "buy") updateBalance(-total);
-      else                updateBalance(total);
+      else updateBalance(total);
 
       setTxHash(data.txHash);
       setStage("confirmed");
@@ -435,7 +436,7 @@ function HoldingRow({
   onRequestSignIn,
   isAuthenticated,
 }: {
-  holding: typeof VAULT_HOLDINGS[number];
+  holding: VaultHolding;
   asset: AssetData;
   sparkline: PricePoint[];
   flash: "up" | "down" | undefined;
@@ -444,8 +445,8 @@ function HoldingRow({
   isAuthenticated: boolean;
 }) {
   const gainLoss = asset.price - holding.acquisitionPrice;
-  const gainPct  = (gainLoss / holding.acquisitionPrice) * 100;
-  const isGain   = gainLoss >= 0;
+  const gainPct = (gainLoss / holding.acquisitionPrice) * 100;
+  const isGain = gainLoss >= 0;
 
   function handleClick() {
     if (!isAuthenticated) { onRequestSignIn(); return; }
@@ -577,30 +578,31 @@ function MarketRow({
 
 export function SimpleView({ assets, sparklines, flashMap, onRequestSignIn }: SimpleViewProps) {
   const { user, isAuthenticated } = useAuth();
-  const [query, setQuery]         = useState("");
+  const [query, setQuery] = useState("");
   const [tradeModal, setTradeModal] = useState<{
     asset: AssetData;
     allowSell: boolean;
   } | null>(null);
 
   // Match vault holdings to live asset prices
+  const { holdings: vaultHoldings } = usePortfolio();
   const holdings = useMemo(() =>
-    VAULT_HOLDINGS.map((h) => ({
+    vaultHoldings.map((h) => ({
       holding: h,
       asset: assets.find((a) => a.symbol === h.symbol),
-    })).filter((h): h is { holding: typeof VAULT_HOLDINGS[number]; asset: AssetData } => !!h.asset),
-    [assets]
+    })).filter((h): h is { holding: VaultHolding; asset: AssetData } => !!h.asset),
+    [assets, vaultHoldings]
   );
 
   // Portfolio math
   const holdingsValue = holdings.reduce((sum, { asset }) => sum + asset.price, 0);
-  const cashBalance   = user?.cashBalance ?? 24_500;
-  const totalValue    = cashBalance + holdingsValue;
-  const dayGain       = holdings.reduce((sum, { asset }) => sum + asset.change, 0);
-  const dayGainPct    = holdingsValue > 0 ? (dayGain / holdingsValue) * 100 : 0;
-  const isDayUp       = dayGain >= 0;
+  const cashBalance = user?.cashBalance ?? 24_500;
+  const totalValue = cashBalance + holdingsValue;
+  const dayGain = holdings.reduce((sum, { asset }) => sum + asset.change, 0);
+  const dayGainPct = holdingsValue > 0 ? (dayGain / holdingsValue) * 100 : 0;
+  const isDayUp = dayGain >= 0;
 
-  const portfolioSymbols = new Set(VAULT_HOLDINGS.map((h) => h.symbol));
+  const portfolioSymbols = new Set(vaultHoldings.map((h) => h.symbol));
 
   // Market assets — exclude holdings, filter by search
   const marketAssets = useMemo(() => {

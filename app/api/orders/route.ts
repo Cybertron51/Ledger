@@ -1,128 +1,112 @@
-/**
- * TASH — Order Book API
- *
- * POST /api/orders  — Submit a new order
- * GET  /api/orders  — List open orders
- *
- * Architecture:
- *   Orders are stored in an in-memory order book.
- *   When a buy and sell order match, we just remove them from the orderbook.
- *
- * Production swap: replace the in-memory store with a database (Redis / Postgres).
- */
-
 import { NextRequest, NextResponse } from "next/server";
-import {
-  type Order,
-  type StoredOrder,
-  usdToUsdc,
-  defaultExpiry,
-} from "@/lib/orders";
-
-// ── In-memory order book ─────────────────────────────────────────────────────
-// Replace with DB in production
-
-const orderBook: StoredOrder[] = [];
-
-// ── Matching logic ───────────────────────────────────────────────────────────
-
-function findMatch(incoming: StoredOrder): StoredOrder | null {
-  const { order } = incoming;
-  return (
-    orderBook.find((candidate) => {
-      const c = candidate.order;
-      return (
-        c.tokenId === order.tokenId &&
-        c.isBuy !== order.isBuy && // opposite sides
-        c.quantity === order.quantity &&
-        // Buy price must meet or exceed sell price
-        (order.isBuy
-          ? order.priceUsdc >= c.priceUsdc
-          : c.priceUsdc >= order.priceUsdc)
-      );
-    }) ?? null
-  );
-}
-
-// ── POST /api/orders ─────────────────────────────────────────────────────────
+import { supabase } from "@/lib/supabase";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const {
-      userId,
-      tokenId,       // numeric string or number
-      priceUsd,      // USD number e.g. 1250.50
-      isBuy,         // boolean
-      quantity,      // number
-      cardName,      // display label
-    } = body;
+    const { userId, symbol, priceUsd, isBuy, quantity } = body;
 
-    if (!userId || tokenId === undefined || !priceUsd || isBuy === undefined || !quantity) {
+    if (!userId || !symbol || !priceUsd || isBuy === undefined || !quantity) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
-    // Generate a mock wallet address for the user deterministically (for demo UI)
-    const mockAddress = `0x${userId.padStart(40, "0").slice(-40)}`;
+    if (!supabase) {
+      return NextResponse.json({ error: "Supabase not configured" }, { status: 500 });
+    }
 
-    // Build order struct
-    const order: Order = {
-      maker: mockAddress,
-      tokenId: Number(tokenId),
-      priceUsdc: usdToUsdc(priceUsd),
-      isBuy: Boolean(isBuy),
-      quantity: Number(quantity),
-      nonce: Date.now(),   // unique per order
-      expiry: defaultExpiry(),
-    };
+    if (isBuy) {
+      // Find 'quantity' number of cheapest listed cards for this symbol
+      const { data: listings, error: fetchErr } = await supabase
+        .from("vault_holdings")
+        .select("id, user_id, listing_price")
+        .eq("symbol", symbol)
+        .eq("status", "listed")
+        .lte("listing_price", priceUsd) // must be less than or equal to what buyer is willing to pay
+        .limit(quantity);
 
-    const storedOrder: StoredOrder = {
-      order,
-      createdAt: Date.now(),
-      userId,
-      cardName: cardName ?? `Token #${tokenId}`,
-      priceUsd,
-    };
+      if (fetchErr || !listings || listings.length < quantity) {
+        return NextResponse.json({ error: "Not enough matching inventory available at this price." }, { status: 400 });
+      }
 
-    // Check for a match
-    const match = findMatch(storedOrder);
+      // Execute match_order RPC for each listing
+      for (const listing of listings) {
+        const { error: rpcErr } = await supabase.rpc("match_order", {
+          p_buyer_id: userId,
+          p_seller_id: listing.user_id,
+          p_holding_id: listing.id,
+          p_price: listing.listing_price
+        });
 
-    if (match) {
-      // Remove matched order from book
-      const matchIdx = orderBook.indexOf(match);
-      if (matchIdx !== -1) orderBook.splice(matchIdx, 1);
+        if (rpcErr) {
+          console.error("Match order error:", rpcErr);
+          return NextResponse.json({ error: "Failed to settle order: " + rpcErr.message }, { status: 500 });
+        }
+      }
 
       return NextResponse.json({
         status: "settled",
-        makerAddress: mockAddress,
-        message: "Order matched successfully",
+        message: "Order matched and settled successfully."
+      });
+
+    } else {
+      // Selling
+      // Find 'quantity' number of 'tradable' or 'in_vault' cards owned by user
+      const { data: holdings, error: fetchErr } = await supabase
+        .from("vault_holdings")
+        .select("id")
+        .eq("user_id", userId)
+        .eq("symbol", symbol)
+        .in("status", ["tradable", "in_vault"])
+        .limit(quantity);
+
+      if (fetchErr || !holdings || holdings.length < quantity) {
+        return NextResponse.json({ error: "Not enough tradable inventory in your vault." }, { status: 400 });
+      }
+
+      // Update them to listed
+      const holdingIds = holdings.map(h => h.id);
+      const { error: updateErr } = await supabase
+        .from("vault_holdings")
+        .update({ status: "listed", listing_price: priceUsd })
+        .in("id", holdingIds)
+        .eq("user_id", userId);
+
+      if (updateErr) {
+        return NextResponse.json({ error: "Failed to list holdings." }, { status: 500 });
+      }
+
+      return NextResponse.json({
+        status: "queued",
+        message: "Cards listed on the market successfully."
       });
     }
 
-    // No match — add to order book
-    orderBook.push(storedOrder);
-
-    return NextResponse.json({
-      status: "queued",
-      makerAddress: mockAddress,
-      message: "Order submitted to order book",
-    });
   } catch (err) {
     console.error("POST /api/orders error:", err);
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
 
-// ── GET /api/orders ──────────────────────────────────────────────────────────
-
 export async function GET() {
-  const open = orderBook.map((entry) => ({
-    cardName: entry.cardName,
-    side: entry.order.isBuy ? "buy" : "sell",
-    priceUsd: entry.priceUsd,
-    quantity: entry.order.quantity.toString(),
-    makerShort: entry.order.maker.slice(0, 6) + "…" + entry.order.maker.slice(-4),
-    createdAt: entry.createdAt,
+  // We can fetch all 'listed' cards from vault_holdings here to construct an order book summary if needed
+  if (!supabase) return NextResponse.json({ orders: [], count: 0 });
+
+  const { data, error } = await supabase
+    .from("vault_holdings")
+    .select("symbol, listing_price, user_id, created_at")
+    .eq("status", "listed");
+
+  if (error || !data) {
+    return NextResponse.json({ orders: [], count: 0 });
+  }
+
+  const open = data.map((entry) => ({
+    cardName: entry.symbol,
+    side: "sell",
+    priceUsd: entry.listing_price,
+    quantity: "1",
+    makerShort: entry.user_id.slice(0, 8) + "…",
+    createdAt: new Date(entry.created_at).getTime(),
   }));
 
   return NextResponse.json({ orders: open, count: open.length });

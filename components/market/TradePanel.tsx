@@ -73,8 +73,8 @@ export function TradePanel({ asset, onRequestSignIn }: TradePanelProps) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          userId:   user.id,
-          tokenId:  asset.tokenId,
+          userId: user.id,
+          symbol: asset.symbol,
           priceUsd: estPrice,
           isBuy,
           quantity,
@@ -209,11 +209,11 @@ export function TradePanel({ asset, onRequestSignIn }: TradePanelProps) {
           style={{ borderColor: colors.border }}
         >
           {[
-            { label: "Action",     value: isBuy ? "Buy" : "Sell",          accent: true },
-            { label: "Card",       value: asset.name,                       accent: false },
-            { label: "Quantity",   value: `${quantity} cop.`,               accent: false },
-            { label: "Order",      value: orderType === "market" ? "Market" : `Limit @ ${formatCurrency(limitPrice)}`, accent: false },
-            { label: "Est. Price", value: formatCurrency(estPrice),         accent: false },
+            { label: "Action", value: isBuy ? "Buy" : "Sell", accent: true },
+            { label: "Card", value: asset.name, accent: false },
+            { label: "Quantity", value: `${quantity} cop.`, accent: false },
+            { label: "Order", value: orderType === "market" ? "Market" : `Limit @ ${formatCurrency(limitPrice)}`, accent: false },
+            { label: "Est. Price", value: formatCurrency(estPrice), accent: false },
           ].map((row, i, arr) => (
             <div
               key={row.label}

@@ -12,15 +12,14 @@ import React, { useState, useEffect } from "react";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { colors } from "@/lib/theme";
-import { tickPrice } from "@/lib/market-data";
-import type { TickerItem } from "@/lib/ticker-data";
+import { tickPrice, type AssetData } from "@/lib/market-data";
 
 // ─────────────────────────────────────────────────────────
 // Sub-component: single ticker chip
 // ─────────────────────────────────────────────────────────
 
 interface TickerChipProps {
-  item: TickerItem;
+  item: AssetData;
 }
 
 function TickerChip({ item }: TickerChipProps) {
@@ -59,13 +58,13 @@ function TickerChip({ item }: TickerChipProps) {
           color: isUp
             ? colors.green
             : isDown
-            ? colors.red
-            : colors.textSecondary,
+              ? colors.red
+              : colors.textSecondary,
           backgroundColor: isUp
             ? colors.greenMuted
             : isDown
-            ? colors.redMuted
-            : "transparent",
+              ? colors.redMuted
+              : "transparent",
         }}
       >
         {isUp ? (
@@ -96,27 +95,18 @@ function TickerChip({ item }: TickerChipProps) {
 // ─────────────────────────────────────────────────────────
 
 interface GlobalTickerProps {
-  items: TickerItem[];
+  items: AssetData[];
 }
 
 export function GlobalTicker({ items }: GlobalTickerProps) {
-  const [liveItems, setLiveItems] = useState<TickerItem[]>(items);
+  const [liveItems, setLiveItems] = useState<AssetData[]>(items);
 
   // Independent live simulation — updates ~3 items every 3 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       setLiveItems((prev) =>
         prev.map((item) =>
-          Math.random() > 0.5
-            ? item
-            : tickPrice({
-                ...item,
-                tokenId: 0,
-                volume24h: 1,
-                high24h: item.price * 1.05,
-                low24h: item.price * 0.95,
-                category: "pokemon",
-              })
+          Math.random() > 0.5 ? item : tickPrice(item)
         )
       );
     }, 3000);

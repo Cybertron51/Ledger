@@ -24,6 +24,11 @@ import { colors, layout } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
 import { type VaultHolding } from "@/lib/vault-data";
 import { type CardPricing } from "@/app/api/scan/route";
+import { insertVaultHolding } from "@/lib/db/vault";
+import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/lib/auth";
+import { usePortfolio } from "@/lib/portfolio-context";
+import { v4 as uuidv4 } from "uuid";
 
 // ─────────────────────────────────────────────────────────
 // Types
@@ -111,6 +116,9 @@ export default function ScanPage() {
   const [error, setError] = useState<string | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+
+  const { user } = useAuth();
+  const { addHolding } = usePortfolio();
 
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -231,24 +239,68 @@ export default function ScanPage() {
   }
 
   // ── Add to vault ───────────────────────────────────────
-  function addToVault() {
-    if (!result) return;
+  async function addToVault() {
+    if (!result || !user) return;
+
+    const holdingId = uuidv4();
+    let finalImageUrl = cardImageUrl ?? thumbDataUrl ?? "";
+
+    // Upload user photo to Supabase Storage if available
+    if (imageBase64 && supabase) {
+      try {
+        // Convert base64 to Blob
+        const fetchResponse = await fetch(`data:${mimeType};base64,${imageBase64}`);
+        const blob = await fetchResponse.blob();
+
+        // Define path: {user_id}/{holding_id}.ext
+        const ext = mimeType === "image/png" ? "png" : "jpg";
+        const filePath = `${user.id}/${holdingId}.${ext}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("scans")
+          .upload(filePath, blob, {
+            contentType: mimeType,
+            upsert: true,
+          });
+
+        if (!uploadError) {
+          const { data } = supabase.storage.from("scans").getPublicUrl(filePath);
+          if (data?.publicUrl) {
+            finalImageUrl = data.publicUrl;
+          }
+        } else {
+          console.error("Failed to upload image to Supabase:", uploadError);
+        }
+      } catch (err) {
+        console.error("Error reading blob for upload:", err);
+      }
+    }
 
     const newHolding: VaultHolding = {
-      id: `scan-${Date.now()}`,
+      id: holdingId, // Use the generated UUID
       name: result.name ?? "Unknown Card",
       symbol: matchedSymbol ?? `SCAN-${Date.now()}`,
       grade: Math.round(result.estimatedGrade ?? 9),
       set: result.set ?? "Unknown Set",
       year: result.year ?? new Date().getFullYear(),
       acquisitionPrice: 0,
-      status: "in_transit",
+      status: "pending_authentication", // Initial state for escrow flow
       dateDeposited: new Date().toISOString().split("T")[0],
       certNumber: "Pending grading",
-      imageUrl: cardImageUrl ?? thumbDataUrl ?? "",
+      imageUrl: finalImageUrl,
     };
 
     try {
+      // 1. Save to Supabase DB using our helper
+      await insertVaultHolding(user.id, {
+        ...newHolding,
+        certNumber: result.notes || undefined, // Optional: save AI notes in certNumber or another column 
+      });
+
+      // 2. Update local context immediately
+      addHolding(newHolding);
+
+      // (Optional) still save to local storage as backup for unauth users, though we require auth now
       const existing: VaultHolding[] = JSON.parse(
         localStorage.getItem("tash-scanned-cards") ?? "[]"
       );
@@ -256,8 +308,9 @@ export default function ScanPage() {
         "tash-scanned-cards",
         JSON.stringify([...existing, newHolding])
       );
-    } catch {
-      // localStorage unavailable — proceed anyway
+    } catch (e) {
+      console.error("Failed to add to vault:", e);
+      // Could show an error state here, but for demo we proceed
     }
 
     setStage("confirmed");

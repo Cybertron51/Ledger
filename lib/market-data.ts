@@ -25,6 +25,25 @@ export interface AssetData {
   category: "pokemon" | "sports";
 }
 
+import type { DBCard } from "./db/cards";
+
+export function mapDBCardToAssetData(c: DBCard): AssetData {
+  return {
+    name: c.name,
+    symbol: c.symbol,
+    tokenId: 0, // Mock id, since it's no longer used for on-chain
+    grade: c.psa_grade,
+    price: c.price,
+    change: c.change_24h,
+    changePct: c.change_pct_24h,
+    set: c.set_name,
+    volume24h: c.volume_24h,
+    high24h: c.high_24h ?? c.price,
+    low24h: c.low_24h ?? c.price,
+    category: c.category as "pokemon" | "sports",
+  };
+}
+
 export interface PricePoint {
   time: number;
   price: number;
@@ -69,11 +88,11 @@ function makeRng(seed: number) {
 // ─────────────────────────────────────────────────────────
 
 const RANGE_CONFIGS: Record<TimeRange, { bars: number; intervalMs: number }> = {
-  "1D": { bars: 48,  intervalMs: 30 * 60 * 1000 },           // 30-min bars
-  "1W": { bars: 84,  intervalMs: 2 * 60 * 60 * 1000 },       // 2-hr bars
-  "1M": { bars: 60,  intervalMs: 12 * 60 * 60 * 1000 },      // 12-hr bars
-  "3M": { bars: 90,  intervalMs: 24 * 60 * 60 * 1000 },      // daily
-  "1Y": { bars: 52,  intervalMs: 7 * 24 * 60 * 60 * 1000 },  // weekly
+  "1D": { bars: 48, intervalMs: 30 * 60 * 1000 },           // 30-min bars
+  "1W": { bars: 84, intervalMs: 2 * 60 * 60 * 1000 },       // 2-hr bars
+  "1M": { bars: 60, intervalMs: 12 * 60 * 60 * 1000 },      // 12-hr bars
+  "3M": { bars: 90, intervalMs: 24 * 60 * 60 * 1000 },      // daily
+  "1Y": { bars: 52, intervalMs: 7 * 24 * 60 * 60 * 1000 },  // weekly
 };
 
 export function generateHistory(
@@ -144,14 +163,14 @@ export function generateSparkline(
 // Order book generator
 // ─────────────────────────────────────────────────────────
 
-export function generateOrderBook(midPrice: number, symbol: string): OrderBook {
+export function generateOrderBook(midPrice: number, symbol: string, userAsks: OrderBookRow[] = []): OrderBook {
   const rng = makeRng(symbolSeed(symbol + "book"));
   const spreadBps = 40 + rng() * 40; // 40–80 bps
   const half = (midPrice * spreadBps) / 20000;
   const askBase = midPrice + half;
   const bidBase = midPrice - half;
 
-  const asks: OrderBookRow[] = [];
+  let asks: OrderBookRow[] = [];
   const bids: OrderBookRow[] = [];
   let askTotal = 0;
   let bidTotal = 0;
@@ -169,19 +188,31 @@ export function generateOrderBook(midPrice: number, symbol: string): OrderBook {
     bids.push({ price: bidPrice, size: bidSize, total: bidTotal, depth: 0 });
   }
 
+  // Inject real user asks and recalculate totals
+  if (userAsks.length > 0) {
+    asks = [...asks, ...userAsks].sort((a, b) => a.price - b.price);
+    askTotal = 0;
+    asks.forEach((a) => {
+      askTotal += a.size;
+      a.total = askTotal;
+    });
+  }
+
   const maxTotal = Math.max(
-    asks[asks.length - 1].total,
-    bids[bids.length - 1].total
+    asks[asks.length - 1]?.total || 0,
+    bids[bids.length - 1]?.total || 0
   );
 
-  asks.forEach((a) => { a.depth = a.total / maxTotal; });
-  bids.forEach((b) => { b.depth = b.total / maxTotal; });
+  if (maxTotal > 0) {
+    asks.forEach((a) => { a.depth = a.total / maxTotal; });
+    bids.forEach((b) => { b.depth = b.total / maxTotal; });
+  }
 
   return {
     asks: [...asks].reverse(), // highest ask at top
     bids,
-    spread: askBase - bidBase,
-    spreadPct: ((askBase - bidBase) / midPrice) * 100,
+    spread: (asks[0]?.price ?? askBase) - (bids[0]?.price ?? bidBase),
+    spreadPct: (((asks[0]?.price ?? askBase) - (bids[0]?.price ?? bidBase)) / midPrice) * 100,
   };
 }
 
@@ -207,177 +238,4 @@ export function tickPrice(asset: AssetData): AssetData {
   };
 }
 
-// ─────────────────────────────────────────────────────────
-// Asset data
-// ─────────────────────────────────────────────────────────
 
-export const ASSETS: AssetData[] = [
-  {
-    name: "Charizard Holo",
-    symbol: "CHZ10-BASE-1999",
-    tokenId: 1,
-    grade: 10,
-    price: 14_250.00,
-    change: +850.00,
-    changePct: +6.34,
-    set: "Base Set 1999",
-    volume24h: 3,
-    high24h: 14_500.00,
-    low24h: 13_200.00,
-    category: "pokemon",
-  },
-  {
-    name: "Pikachu Illustrator",
-    symbol: "PIKA10-ILLUS-1998",
-    tokenId: 2,
-    grade: 10,
-    price: 248_000.00,
-    change: -12_500.00,
-    changePct: -4.80,
-    set: "Promo 1998",
-    volume24h: 1,
-    high24h: 260_000.00,
-    low24h: 245_000.00,
-    category: "pokemon",
-  },
-  {
-    name: "Blastoise Holo",
-    symbol: "BLS10-BASE-1999",
-    tokenId: 3,
-    grade: 10,
-    price: 3_800.00,
-    change: +210.00,
-    changePct: +5.85,
-    set: "Base Set 1999",
-    volume24h: 5,
-    high24h: 3_900.00,
-    low24h: 3_550.00,
-    category: "pokemon",
-  },
-  {
-    name: "LeBron James RC",
-    symbol: "LBJ10-TOP-2003",
-    tokenId: 4,
-    grade: 10,
-    price: 5_650.00,
-    change: +320.00,
-    changePct: +6.01,
-    set: "Topps Chrome 2003",
-    volume24h: 4,
-    high24h: 5_800.00,
-    low24h: 5_200.00,
-    category: "sports",
-  },
-  {
-    name: "Michael Jordan RC",
-    symbol: "MJ10-STAR-1986",
-    tokenId: 5,
-    grade: 10,
-    price: 738_000.00,
-    change: +21_000.00,
-    changePct: +2.93,
-    set: "Fleer 1986",
-    volume24h: 1,
-    high24h: 750_000.00,
-    low24h: 710_000.00,
-    category: "sports",
-  },
-  {
-    name: "Mew Promo",
-    symbol: "MEW10-CORO-1996",
-    tokenId: 6,
-    grade: 10,
-    price: 18_400.00,
-    change: -900.00,
-    changePct: -4.67,
-    set: "CoroCoro Promo 1996",
-    volume24h: 2,
-    high24h: 19_500.00,
-    low24h: 17_800.00,
-    category: "pokemon",
-  },
-  {
-    name: "Patrick Mahomes RC",
-    symbol: "PMH10-OPTIC-2017",
-    tokenId: 7,
-    grade: 10,
-    price: 2_100.00,
-    change: +155.00,
-    changePct: +7.97,
-    set: "Donruss Optic 2017",
-    volume24h: 8,
-    high24h: 2_200.00,
-    low24h: 1_900.00,
-    category: "sports",
-  },
-  {
-    name: "Shohei Ohtani RC",
-    symbol: "SHO10-TOPPS-2018",
-    tokenId: 8,
-    grade: 10,
-    price: 1_450.00,
-    change: -88.00,
-    changePct: -5.72,
-    set: "Topps Update 2018",
-    volume24h: 6,
-    high24h: 1_580.00,
-    low24h: 1_400.00,
-    category: "sports",
-  },
-  {
-    name: "Rayquaza Gold Star",
-    symbol: "RAY10-DS-2005",
-    tokenId: 9,
-    grade: 10,
-    price: 42_500.00,
-    change: +3_100.00,
-    changePct: +7.87,
-    set: "Delta Species 2005",
-    volume24h: 2,
-    high24h: 43_000.00,
-    low24h: 39_000.00,
-    category: "pokemon",
-  },
-  {
-    name: "Tom Brady RC",
-    symbol: "TB12-BOWM-2000",
-    tokenId: 10,
-    grade: 10,
-    price: 780_000.00,
-    change: +34_000.00,
-    changePct: +4.56,
-    set: "Bowman Chrome 2000",
-    volume24h: 1,
-    high24h: 790_000.00,
-    low24h: 740_000.00,
-    category: "sports",
-  },
-  {
-    name: "Umbreon Gold Star",
-    symbol: "UMB10-POP-2005",
-    tokenId: 11,
-    grade: 10,
-    price: 12_800.00,
-    change: -640.00,
-    changePct: -4.76,
-    set: "POP Series 5",
-    volume24h: 3,
-    high24h: 13_500.00,
-    low24h: 12_500.00,
-    category: "pokemon",
-  },
-  {
-    name: "Wembanyama RC",
-    symbol: "WEM10-PRIZM-2023",
-    tokenId: 12,
-    grade: 10,
-    price: 8_900.00,
-    change: +1_200.00,
-    changePct: +15.58,
-    set: "Prizm 2023",
-    volume24h: 12,
-    high24h: 9_200.00,
-    low24h: 7_500.00,
-    category: "sports",
-  },
-];
