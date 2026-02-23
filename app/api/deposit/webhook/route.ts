@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
+// Safely initialize stripe so the Next.js build doesn't crash
+// if STRIPE_SECRET_KEY is missing from the environment.
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "sk_test_placeholder", {
   apiVersion: "2026-01-28.clover",
 });
 
-const stripeAccount = process.env.STRIPE_ACCOUNT_ID!;
+// Avoid crashes during Next build if missing
+const stripeAccount = process.env.STRIPE_ACCOUNT_ID ?? "acct_placeholder";
 
 // Required by Next.js to read raw body for Stripe signature verification
 export const runtime = "nodejs";

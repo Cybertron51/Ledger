@@ -20,7 +20,7 @@ import "./globals.css";
 
 import { GlobalTicker } from "@/components/layout/GlobalTicker";
 import { Navigation } from "@/components/layout/Navigation";
-import { ClientProviders } from "@/components/providers/ClientProviders";
+import { Providers } from "@/components/providers/Providers";
 import { TOP_PSA10_ASSETS } from "@/lib/ticker-data";
 import { layout } from "@/lib/theme";
 
@@ -66,7 +66,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className="antialiased">
-        <ClientProviders>
+        <Providers>
           {/* ── Fixed chrome: ticker + nav ── */}
           <div
             className="fixed left-0 right-0 top-0"
@@ -85,7 +85,7 @@ export default function RootLayout({
           >
             {children}
           </main>
-        </ClientProviders>
+        </Providers>
       </body>
     </html>
   );
