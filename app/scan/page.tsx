@@ -60,6 +60,21 @@ interface ScanResult {
   rawImageUrl?: string;
 }
 
+export interface ScanItem {
+  id: string;
+  blobUrl: string;
+  imageBase64: string;
+  mimeType: string;
+  thumbDataUrl: string;
+  status: "pending" | "analyzing" | "success" | "error";
+  result?: ScanResult;
+  matchedSymbol?: string | null;
+  cardImageUrl?: string | null;
+  rawImageUrl?: string | null;
+  pricing?: CardPricing | null;
+  error?: string;
+}
+
 // ─────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────
@@ -103,26 +118,17 @@ export default function ScanPage() {
   const [stage, setStage] = useState<Stage>("capture");
   const [captureTab, setCaptureTab] = useState<CaptureTab>("camera");
 
-  // Image state
-  const [blobUrl, setBlobUrl] = useState<string | null>(null);       // for display
-  const [imageBase64, setImageBase64] = useState<string | null>(null); // for API
-  const [mimeType, setMimeType] = useState<string>("image/jpeg");
-  const [thumbDataUrl, setThumbDataUrl] = useState<string | null>(null); // for storage
-
-  // AI result
-  const [result, setResult] = useState<ScanResult | null>(null);
-  const [matchedSymbol, setMatchedSymbol] = useState<string | null>(null);
-  const [cardImageUrl, setCardImageUrl] = useState<string | null>(null);
-  const [rawImageUrl, setRawImageUrl] = useState<string | null>(null);
-  const [pricing, setPricing] = useState<CardPricing | null>(null);
+  // Batch state
+  const [scans, setScans] = useState<ScanItem[]>([]);
+  const [activeScanIndex, setActiveScanIndex] = useState<number>(0);
 
   // UI state
-  const [error, setError] = useState<string | null>(null);
+  const [globalError, setGlobalError] = useState<string | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
 
   const { user } = useAuth();
-  const { addHolding } = usePortfolio();
+  const { holdings, addHolding } = usePortfolio();
 
   // Refs
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -131,7 +137,7 @@ export default function ScanPage() {
 
   // ── Camera management ──────────────────────────────────
   useEffect(() => {
-    if (stage === "capture" && captureTab === "camera" && !blobUrl) {
+    if (stage === "capture" && captureTab === "camera") {
       navigator.mediaDevices
         .getUserMedia({ video: { facingMode: "environment" } })
         .then((stream) => {
@@ -146,7 +152,7 @@ export default function ScanPage() {
     return () => {
       streamRef.current?.getTracks().forEach((t) => t.stop());
     };
-  }, [stage, captureTab, blobUrl]);
+  }, [stage, captureTab]);
 
   // ── Capture from camera ────────────────────────────────
   function capturePhoto() {
@@ -159,24 +165,26 @@ export default function ScanPage() {
     canvas.getContext("2d")?.drawImage(video, 0, 0);
 
     const thumb = makeThumb(canvas);
-    setThumbDataUrl(thumb);
 
     canvas.toBlob(
       (blob) => {
         if (!blob) return;
         const url = URL.createObjectURL(blob);
-        setBlobUrl(url);
-
         const reader = new FileReader();
         reader.onloadend = () => {
           const dataUrl = reader.result as string;
-          setImageBase64(dataUrl.split(",")[1]);
-          setMimeType("image/jpeg");
+          const base64 = dataUrl.split(",")[1];
+          const newItem: ScanItem = {
+            id: uuidv4(),
+            blobUrl: url,
+            imageBase64: base64,
+            mimeType: "image/jpeg",
+            thumbDataUrl: thumb,
+            status: "pending",
+          };
+          setScans((prev) => [...prev, newItem]);
         };
         reader.readAsDataURL(blob);
-
-        streamRef.current?.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
       },
       "image/jpeg",
       0.88
@@ -184,140 +192,174 @@ export default function ScanPage() {
   }
 
   // ── Handle file upload ─────────────────────────────────
-  function handleFile(file: File) {
-    if (!file.type.startsWith("image/")) return;
-    const url = URL.createObjectURL(file);
-    setBlobUrl(url);
-    setMimeType(file.type.startsWith("image/png") ? "image/png" : "image/jpeg");
+  function handleFiles(files: FileList | null) {
+    if (!files) return;
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const dataUrl = reader.result as string;
-      const base64 = dataUrl.split(",")[1];
-      setImageBase64(base64);
+    Array.from(files).forEach((file) => {
+      if (!file.type.startsWith("image/")) return;
+      const url = URL.createObjectURL(file);
+      const mime = file.type.startsWith("image/png") ? "image/png" : "image/jpeg";
 
-      // Build thumb from the image
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        canvas.getContext("2d")?.drawImage(img, 0, 0);
-        setThumbDataUrl(makeThumb(canvas));
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const dataUrl = reader.result as string;
+        const base64 = dataUrl.split(",")[1];
+
+        // Build thumb from the image
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          canvas.getContext("2d")?.drawImage(img, 0, 0);
+
+          const newItem: ScanItem = {
+            id: uuidv4(),
+            blobUrl: url,
+            imageBase64: base64,
+            mimeType: mime,
+            thumbDataUrl: makeThumb(canvas),
+            status: "pending",
+          };
+          setScans((prev) => [...prev, newItem]);
+        };
+        img.src = url;
       };
-      img.src = url;
-    };
-    reader.readAsDataURL(file);
+      reader.readAsDataURL(file);
+    });
   }
 
-  // ── Auto-analyze when image is ready ───────────────────
+  // ── Auto-analyze Queue ─────────────────────────────────
   useEffect(() => {
-    if (stage === "capture" && imageBase64) {
-      analyzeCard();
-    }
-  }, [stage, imageBase64]);
+    const pendingScans = scans.filter((s) => s.status === "pending");
+    const analyzingScans = scans.filter((s) => s.status === "analyzing");
 
-  // ── Analyze card ───────────────────────────────────────
-  async function analyzeCard() {
-    if (!imageBase64) return;
-    setStage("analyzing");
-    setError(null);
+    if (pendingScans.length > 0 && stage !== "analyzing") {
+      setStage("analyzing");
+    }
+
+    if (stage === "analyzing") {
+      // Only start next if nothing is currently analyzing
+      if (analyzingScans.length === 0) {
+        const nextPendingIndex = scans.findIndex((s) => s.status === "pending");
+        if (nextPendingIndex !== -1) {
+          setActiveScanIndex(nextPendingIndex);
+          analyzeCard(nextPendingIndex);
+        } else {
+          // If all are done (success or error), move to result stage
+          const allDone = scans.every((s) => s.status === "success" || s.status === "error");
+          if (allDone && scans.length > 0) {
+            setStage("result");
+          }
+        }
+      }
+    }
+  }, [scans, stage]);
+
+  // ── Analyze individual card ─────────────────────────────
+  async function analyzeCard(index: number) {
+    const item = scans[index];
+    if (!item || item.status !== "pending") return;
+
+    // Mark as analyzing
+    setScans((prev) => {
+      const newScans = [...prev];
+      newScans[index] = { ...item, status: "analyzing" };
+      return newScans;
+    });
 
     try {
       const res = await fetch("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64, mimeType }),
+        body: JSON.stringify({ imageBase64: item.imageBase64, mimeType: item.mimeType }),
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Analysis failed");
 
-      setResult(data.card);
-      setMatchedSymbol(data.matchedSymbol);
-      setCardImageUrl(data.imageUrl);
-      setRawImageUrl(data.rawImageUrl);
-      setPricing(data.pricing);
-      setStage("result");
+      // Check if duplicate in current batch
+      const isDuplicateInBatch = scans.some((s, i) => i !== index && s.result?.certNumber === data.card.certNumber);
+
+      // We also check against existing portfolio to be safe (client side first pass)
+      // `holdings` comes from the top-level usePortfolio hook
+      const existingHolding = data.card.certNumber ?
+        holdings.find(h => h.certNumber === data.card.certNumber) : null;
+
+      if (isDuplicateInBatch || existingHolding) {
+        throw new Error(`Duplicate PSA Certificate: ${data.card.certNumber}`);
+      }
+
+      setScans((prev) => {
+        const newScans = [...prev];
+        newScans[index] = {
+          ...newScans[index],
+          status: "success",
+          result: data.card,
+          matchedSymbol: data.matchedSymbol,
+          cardImageUrl: data.imageUrl,
+          rawImageUrl: data.rawImageUrl,
+          pricing: data.pricing,
+        };
+        return newScans;
+      });
     } catch (err: any) {
-      setError(err.message || "An error occurred");
-      setStage("capture");
+      setScans((prev) => {
+        const newScans = [...prev];
+        newScans[index] = {
+          ...newScans[index],
+          status: "error",
+          error: err.message || "An error occurred",
+        };
+        return newScans;
+      });
     }
   }
 
   // ── Add to vault ───────────────────────────────────────
   async function addToVault() {
-    if (!result || !user) return;
+    if (!user) return;
+    const successfulScans = scans.filter((s) => s.status === "success" && s.result);
+    if (successfulScans.length === 0) return;
 
-    const holdingId = uuidv4();
-    let finalImageUrl = cardImageUrl ?? thumbDataUrl ?? "";
+    for (const item of successfulScans) {
+      const result = item.result!;
+      const holdingId = uuidv4();
+      const finalImageUrl = item.cardImageUrl ?? item.thumbDataUrl ?? "";
 
-    // Upload user photo to Supabase Storage if available
-    if (imageBase64 && supabase) {
+      const newHolding: VaultHolding = {
+        id: holdingId, // Use the generated UUID
+        name: result.name ?? "Unknown Card",
+        symbol: item.matchedSymbol ?? `SCAN-${Date.now()}`,
+        grade: Math.round(result.estimatedGrade ?? 9),
+        set: result.set ?? "Unknown Set",
+        year: result.year ?? new Date().getFullYear(),
+        acquisitionPrice: 0,
+        status: "pending_authentication", // Initial state for escrow flow
+        dateDeposited: new Date().toISOString().split("T")[0],
+        certNumber: result.certNumber ?? "Pending grading",
+        imageUrl: finalImageUrl,
+        rawImageUrl: item.rawImageUrl ?? undefined,
+      };
+
       try {
-        // Convert base64 to Blob
-        const fetchResponse = await fetch(`data:${mimeType};base64,${imageBase64}`);
-        const blob = await fetchResponse.blob();
+        // 1. Save to Supabase DB using our helper
+        await insertVaultHolding(user.id, newHolding);
 
-        // Define path: {user_id}/{holding_id}.ext
-        const ext = mimeType === "image/png" ? "png" : "jpg";
-        const filePath = `${user.id}/${holdingId}.${ext}`;
+        // 2. Update local context immediately
+        addHolding(newHolding);
 
-        const { error: uploadError } = await supabase.storage
-          .from("scans")
-          .upload(filePath, blob, {
-            contentType: mimeType,
-            upsert: true,
-          });
-
-        if (!uploadError) {
-          const { data } = supabase.storage.from("scans").getPublicUrl(filePath);
-          if (data?.publicUrl) {
-            finalImageUrl = data.publicUrl;
-          }
-        } else {
-          console.error("Failed to upload image to Supabase:", uploadError);
-        }
-      } catch (err) {
-        console.error("Error reading blob for upload:", err);
+        // (Optional) still save to local storage as backup for unauth users, though we require auth now
+        const existing: VaultHolding[] = JSON.parse(
+          localStorage.getItem("tash-scanned-cards") ?? "[]"
+        );
+        localStorage.setItem(
+          "tash-scanned-cards",
+          JSON.stringify([...existing, newHolding])
+        );
+      } catch (e) {
+        console.error("Failed to add to vault:", e);
       }
-    }
-
-    const newHolding: VaultHolding = {
-      id: holdingId, // Use the generated UUID
-      name: result.name ?? "Unknown Card",
-      symbol: matchedSymbol ?? `SCAN-${Date.now()}`,
-      grade: Math.round(result.estimatedGrade ?? 9),
-      set: result.set ?? "Unknown Set",
-      year: result.year ?? new Date().getFullYear(),
-      acquisitionPrice: 0,
-      status: "pending_authentication", // Initial state for escrow flow
-      dateDeposited: new Date().toISOString().split("T")[0],
-      certNumber: result.certNumber ?? "Pending grading",
-      imageUrl: finalImageUrl,
-    };
-
-    try {
-      // 1. Save to Supabase DB using our helper
-      await insertVaultHolding(user.id, {
-        ...newHolding,
-        certNumber: result.notes || undefined, // Optional: save AI notes in certNumber or another column 
-      });
-
-      // 2. Update local context immediately
-      addHolding(newHolding);
-
-      // (Optional) still save to local storage as backup for unauth users, though we require auth now
-      const existing: VaultHolding[] = JSON.parse(
-        localStorage.getItem("tash-scanned-cards") ?? "[]"
-      );
-      localStorage.setItem(
-        "tash-scanned-cards",
-        JSON.stringify([...existing, newHolding])
-      );
-    } catch (e) {
-      console.error("Failed to add to vault:", e);
-      // Could show an error state here, but for demo we proceed
     }
 
     setStage("confirmed");
@@ -325,15 +367,10 @@ export default function ScanPage() {
 
   // ── Reset to scan again ────────────────────────────────
   function reset() {
-    if (blobUrl) URL.revokeObjectURL(blobUrl);
-    setBlobUrl(null);
-    setImageBase64(null);
-    setThumbDataUrl(null);
-    setResult(null);
-    setMatchedSymbol(null);
-    setCardImageUrl(null);
-    setPricing(null);
-    setError(null);
+    scans.forEach((s) => URL.revokeObjectURL(s.blobUrl));
+    setScans([]);
+    setActiveScanIndex(0);
+    setGlobalError(null);
     setCameraError(null);
     setStage("capture");
   }
@@ -366,47 +403,40 @@ export default function ScanPage() {
             setCaptureTab={(tab) => {
               setCaptureTab(tab);
               setCameraError(null);
-              setBlobUrl(null);
-              setImageBase64(null);
             }}
-            blobUrl={blobUrl}
-            error={error}
+            scans={scans}
+            error={globalError}
             cameraError={cameraError}
+            onStartAnalysis={() => setStage("analyzing")}
             dragOver={dragOver}
             videoRef={videoRef}
             fileInputRef={fileInputRef}
             onCapture={capturePhoto}
-            onFile={handleFile}
+            onFiles={handleFiles}
             onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
             onDragLeave={() => setDragOver(false)}
-            onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
-            onRetake={() => { if (blobUrl) URL.revokeObjectURL(blobUrl); setBlobUrl(null); setImageBase64(null); setCameraError(null); }}
+            onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
             onSwitchToUpload={() => { setCaptureTab("upload"); setCameraError(null); }}
           />
         )}
 
         {/* ── Stage 2: Analyzing ── */}
-        {stage === "analyzing" && blobUrl && (
-          <AnalyzingStage blobUrl={blobUrl} />
+        {stage === "analyzing" && scans[activeScanIndex] && (
+          <AnalyzingStage scans={scans} activeIndex={activeScanIndex} />
         )}
 
         {/* ── Stage 3: Result ── */}
-        {stage === "result" && result && (
+        {stage === "result" && (
           <ResultStage
-            result={result}
-            thumbDataUrl={thumbDataUrl}
-            cardImageUrl={cardImageUrl}
-            rawImageUrl={rawImageUrl}
-            matchedSymbol={matchedSymbol}
-            pricing={pricing}
+            scans={scans}
             onAddToVault={addToVault}
             onScanAgain={reset}
           />
         )}
 
         {/* ── Stage 4: Confirmed ── */}
-        {stage === "confirmed" && result && (
-          <ConfirmedStage cardName={result.name} onScanAgain={reset} />
+        {stage === "confirmed" && (
+          <ConfirmedStage totalCount={scans.filter(s => s.status === "success" && s.result?.certNumber && s.result?.isFullSlabVisible).length} onScanAgain={reset} />
         )}
       </div>
     </div>
@@ -420,36 +450,36 @@ export default function ScanPage() {
 interface CaptureStageProps {
   captureTab: CaptureTab;
   setCaptureTab: (t: CaptureTab) => void;
-  blobUrl: string | null;
+  scans: ScanItem[];
   error: string | null;
   cameraError: string | null;
+  onStartAnalysis: () => void;
   dragOver: boolean;
   videoRef: React.RefObject<HTMLVideoElement | null>;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   onCapture: () => void;
-  onFile: (f: File) => void;
+  onFiles: (files: FileList | null) => void;
   onDragOver: (e: React.DragEvent) => void;
   onDragLeave: () => void;
   onDrop: (e: React.DragEvent) => void;
-  onRetake: () => void;
   onSwitchToUpload: () => void;
 }
 
 function CaptureStage({
   captureTab,
   setCaptureTab,
-  blobUrl,
+  scans,
   error,
   cameraError,
+  onStartAnalysis,
   dragOver,
   videoRef,
   fileInputRef,
   onCapture,
-  onFile,
+  onFiles,
   onDragOver,
   onDragLeave,
   onDrop,
-  onRetake,
   onSwitchToUpload,
 }: CaptureStageProps) {
   return (
@@ -537,9 +567,7 @@ function CaptureStage({
       {/* Camera tab */}
       {captureTab === "camera" && (
         <>
-          {blobUrl ? (
-            <CapturedPreview blobUrl={blobUrl} onRetake={onRetake} />
-          ) : cameraError ? (
+          {cameraError ? (
             <div
               style={{
                 textAlign: "center",
@@ -601,6 +629,31 @@ function CaptureStage({
                   }}
                 />
               ))}
+              {/* Batch Tray for Camera */}
+              {scans.length > 0 && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 16,
+                    left: 16,
+                    right: 16,
+                    display: "flex",
+                    gap: 8,
+                    overflowX: "auto",
+                    paddingBottom: 8,
+                  }}
+                >
+                  {scans.map((s, i) => (
+                    <img
+                      key={s.id}
+                      src={s.thumbDataUrl}
+                      alt="thumb"
+                      style={{ width: 40, height: 56, borderRadius: 4, border: `2px solid ${colors.green}`, objectFit: "cover" }}
+                    />
+                  ))}
+                </div>
+              )}
+
               {/* Capture button */}
               <div
                 style={{
@@ -634,105 +687,67 @@ function CaptureStage({
       {/* Upload tab */}
       {captureTab === "upload" && (
         <>
-          {blobUrl ? (
-            <CapturedPreview blobUrl={blobUrl} onRetake={onRetake} />
-          ) : (
-            <div
-              onClick={() => fileInputRef.current?.click()}
-              onDragOver={onDragOver}
-              onDragLeave={onDragLeave}
-              onDrop={onDrop}
-              style={{
-                border: `2px dashed ${dragOver ? colors.green : colors.border}`,
-                borderRadius: 12,
-                padding: "48px 24px",
-                textAlign: "center",
-                cursor: "pointer",
-                background: dragOver ? colors.greenMuted : "transparent",
-                transition: "all 0.15s",
-              }}
-            >
-              <Upload
-                size={28}
-                style={{ color: colors.textMuted, margin: "0 auto 12px", display: "block" }}
-              />
-              <p style={{ fontSize: 14, color: colors.textSecondary, margin: 0 }}>
-                Drag photo here or{" "}
-                <span style={{ color: colors.green }}>browse files</span>
-              </p>
-              <p style={{ fontSize: 11, color: colors.textMuted, marginTop: 6 }}>
-                JPG, PNG, HEIC — any size
-              </p>
-            </div>
-          )}
+          <div
+            onClick={() => fileInputRef.current?.click()}
+            onDragOver={onDragOver}
+            onDragLeave={onDragLeave}
+            onDrop={onDrop}
+            style={{
+              border: `2px dashed ${dragOver ? colors.green : colors.border}`,
+              borderRadius: 12,
+              padding: "48px 24px",
+              textAlign: "center",
+              cursor: "pointer",
+              background: dragOver ? colors.greenMuted : "transparent",
+              transition: "all 0.15s",
+            }}
+          >
+            <Upload
+              size={28}
+              style={{ color: colors.textMuted, margin: "0 auto 12px", display: "block" }}
+            />
+            <p style={{ fontSize: 14, color: colors.textSecondary, margin: 0 }}>
+              Drag photos here or{" "}
+              <span style={{ color: colors.green }}>browse files</span>
+            </p>
+            <p style={{ fontSize: 11, color: colors.textMuted, marginTop: 6 }}>
+              JPG, PNG, HEIC — any size. Select multiple to batch scan.
+            </p>
+          </div>
           <input
             ref={fileInputRef}
             type="file"
             accept="image/*"
+            multiple
             style={{ display: "none" }}
             onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) onFile(f);
+              onFiles(e.target.files);
             }}
           />
         </>
       )}
-    </>
-  );
-}
 
-function CapturedPreview({
-  blobUrl,
-  onRetake,
-}: {
-  blobUrl: string;
-  onRetake: () => void;
-}) {
-  return (
-    <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-      <div
-        style={{
-          width: 80,
-          height: 112,
-          borderRadius: 8,
-          overflow: "hidden",
-          border: `1px solid ${colors.border}`,
-          flexShrink: 0,
-        }}
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={blobUrl}
-          alt="Captured card"
-          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-        />
-      </div>
-      <div>
-        <p style={{ fontSize: 13, fontWeight: 600, color: colors.green, margin: 0 }}>
-          Photo ready
-        </p>
-        <p style={{ fontSize: 12, color: colors.textMuted, marginTop: 2 }}>
-          Tap Analyze Card below, or retake
-        </p>
+      {/* Global Analyze Button */}
+      {scans.length > 0 && captureTab === "camera" && (
         <button
-          onClick={onRetake}
+          onClick={onStartAnalysis}
           style={{
-            marginTop: 8,
-            fontSize: 12,
-            color: colors.textMuted,
-            background: "none",
+            width: "100%",
+            marginTop: 16,
+            padding: "16px 0",
+            borderRadius: 12,
+            background: colors.green,
+            color: "#fff",
+            fontSize: 16,
+            fontWeight: 700,
             border: "none",
             cursor: "pointer",
-            padding: 0,
-            display: "flex",
-            alignItems: "center",
-            gap: 4,
           }}
         >
-          <RotateCcw size={11} /> Retake
+          Analyze {scans.length} {scans.length === 1 ? "Card" : "Cards"} →
         </button>
-      </div>
-    </div>
+      )}
+    </>
   );
 }
 
@@ -740,7 +755,10 @@ function CapturedPreview({
 // Stage 2 — Analyzing
 // ─────────────────────────────────────────────────────────
 
-function AnalyzingStage({ blobUrl }: { blobUrl: string }) {
+function AnalyzingStage({ scans, activeIndex }: { scans: ScanItem[]; activeIndex: number }) {
+  const currentScan = scans[activeIndex];
+  if (!currentScan) return null;
+
   return (
     <div
       style={{
@@ -755,7 +773,7 @@ function AnalyzingStage({ blobUrl }: { blobUrl: string }) {
       {/* Blurred card image */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
-        src={blobUrl}
+        src={currentScan.blobUrl}
         alt="Analyzing"
         style={{
           position: "absolute",
@@ -796,10 +814,10 @@ function AnalyzingStage({ blobUrl }: { blobUrl: string }) {
             margin: 0,
           }}
         >
-          Identifying your card with AI…
+          Identifying {activeIndex + 1} of {scans.length}…
         </p>
         <p style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", margin: 0 }}>
-          This takes a few seconds
+          Please leave this screen open
         </p>
       </div>
 
@@ -814,336 +832,159 @@ function AnalyzingStage({ blobUrl }: { blobUrl: string }) {
 // ─────────────────────────────────────────────────────────
 
 interface ResultStageProps {
-  result: ScanResult;
-  thumbDataUrl: string | null;
-  cardImageUrl: string | null;
-  rawImageUrl: string | null;
-  matchedSymbol: string | null;
-  pricing: CardPricing | null;
+  scans: ScanItem[];
   onAddToVault: () => void;
   onScanAgain: () => void;
 }
 
 function ResultStage({
-  result,
-  thumbDataUrl,
-  cardImageUrl,
-  rawImageUrl,
-  matchedSymbol,
-  pricing,
+  scans,
   onAddToVault,
   onScanAgain,
 }: ResultStageProps) {
-  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const successes = scans.filter((s) => s.status === "success" && s.result);
+  const errors = scans.filter((s) => s.status === "error");
 
-  // Images to show in the carousel
-  // 1. Official DB image OR PSA image OR fallback thumbnail
-  // 2. The raw scan image that was uploaded to Supabase
-  const officialImage = cardImageUrl ?? thumbDataUrl;
-  const images = [officialImage];
-  if (rawImageUrl) {
-    images.push(rawImageUrl);
-  }
-
-  const gc = gradeColor(result.estimatedGrade);
-  const conf = confidenceLabel(result.confidence);
-  const confPct = Math.round(result.confidence * 100);
+  // A card is "valid to add" if it has a cert number and full slab is visible
+  const validToAddCount = successes.filter(
+    (s) => s.result?.certNumber && s.result?.isFullSlabVisible
+  ).length;
 
   return (
     <>
       <div style={{ paddingTop: 28, paddingBottom: 16 }}>
         <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: colors.textMuted, margin: 0 }}>
-          AI Identification Complete
+          Batch Analysis Complete
         </p>
       </div>
 
-      {/* Card header */}
-      <div
-        style={{
-          display: "flex",
-          gap: 16,
-          marginBottom: 20,
-          padding: 16,
-          background: colors.surface,
-          borderRadius: 12,
-          border: `1px solid ${colors.border}`,
-          position: "relative",
-        }}
-      >
-        {/* Image Carousel */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
-          <div
-            onClick={() => {
-              if (images.length > 1) {
-                setActiveImageIndex((prev) => (prev + 1) % images.length);
-              }
-            }}
-            style={{
-              width: 60,
-              height: 84,
-              borderRadius: 6,
-              overflow: "hidden",
-              border: `1px solid ${colors.border}`,
-              flexShrink: 0,
-              background: colors.surfaceOverlay,
-              cursor: images.length > 1 ? "pointer" : "default",
-              position: "relative",
-            }}
-          >
-            {images[activeImageIndex] && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={images[activeImageIndex]!}
-                alt={result.name}
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
-            )}
-          </div>
-          {/* Carousel dots */}
-          {images.length > 1 && (
-            <div style={{ display: "flex", gap: 4 }}>
-              {images.map((_, i) => (
+      {/* Successes List */}
+      {successes.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
+          {successes.map((item, idx) => {
+            const result = item.result!;
+            const gc = gradeColor(result.estimatedGrade);
+            const isValid = result.certNumber && result.isFullSlabVisible;
+
+            return (
+              <div
+                key={item.id}
+                style={{
+                  display: "flex",
+                  gap: 12,
+                  padding: 12,
+                  background: colors.surface,
+                  borderRadius: 12,
+                  border: `1px solid ${isValid ? colors.border : colors.red + "44"}`,
+                  alignItems: "center",
+                }}
+              >
+                {/* Thumb */}
                 <div
-                  key={i}
                   style={{
-                    width: 6,
-                    height: 6,
-                    borderRadius: "50%",
-                    background: i === activeImageIndex ? colors.textPrimary : colors.border,
+                    width: 48,
+                    height: 68,
+                    borderRadius: 6,
+                    overflow: "hidden",
+                    border: `1px solid ${colors.border}`,
+                    flexShrink: 0,
+                    background: colors.surfaceOverlay,
                   }}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+                >
+                  <img
+                    src={item.cardImageUrl || item.thumbDataUrl}
+                    alt={result.name}
+                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  />
+                </div>
 
-        {/* Identity */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 8, flexWrap: "wrap" }}>
-            <h2
-              style={{
-                fontSize: 18,
-                fontWeight: 700,
-                color: colors.textPrimary,
-                margin: 0,
-                letterSpacing: "-0.02em",
-                lineHeight: 1.2,
-              }}
-            >
-              {result.year ? `${result.year} ` : ""}{result.name}
-            </h2>
-            {/* Grade badge */}
-            <div
-              style={{
-                background: `${gc}18`,
-                border: `1px solid ${gc}55`,
-                borderRadius: 6,
-                padding: "3px 8px",
-                flexShrink: 0,
-              }}
-            >
-              <span style={{ fontSize: 11, fontWeight: 700, color: gc, letterSpacing: "0.04em" }}>
-                PSA {result.estimatedGrade}
-              </span>
-            </div>
-          </div>
-
-          <p style={{ fontSize: 12, color: colors.textMuted, margin: "4px 0 0" }}>
-            {result.set}
-            {result.cardNumber ? ` · #${result.cardNumber}` : ""}
-          </p>
-
-          {/* PSA Cert */}
-          {result.certNumber && (
-            <p style={{ fontSize: 11, color: colors.textMuted, marginTop: 6 }}>
-              Cert Number:{" "}
-              <span style={{ color: colors.textPrimary, fontWeight: 600 }}>
-                {result.certNumber}
-              </span>
-            </p>
-          )}
-
-          {matchedSymbol && (
-            <p style={{ fontSize: 11, color: colors.green, marginTop: 4, fontWeight: 600 }}>
-              ✓ Matched to live market listing
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Verification & Quality Check */}
-      <div style={{ marginBottom: 16 }}>
-        <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: colors.textMuted, marginBottom: 10 }}>
-          Authentication
-        </p>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
-          <div
-            style={{
-              background: colors.surface,
-              border: `1px solid ${colors.border}`,
-              borderRadius: 10,
-              padding: "12px 14px",
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <div
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: result.certNumber ? colors.green : colors.red,
-                flexShrink: 0,
-              }}
-            />
-            <div style={{ minWidth: 0 }}>
-              <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: colors.textMuted, margin: 0 }}>
-                Legitimacy
-              </p>
-              <p style={{ fontSize: 13, fontWeight: 600, color: result.certNumber ? colors.green : colors.red, margin: "2px 0 0" }}>
-                {result.certNumber ? "Verified PSA Slab" : "PSA Label Not Detected"}
-              </p>
-            </div>
-          </div>
-
-          <div
-            style={{
-              background: colors.surface,
-              border: `1px solid ${colors.border}`,
-              borderRadius: 10,
-              padding: "12px 14px",
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <div
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: result.isFullSlabVisible ? colors.green : colors.red,
-                flexShrink: 0,
-              }}
-            />
-            <div style={{ minWidth: 0 }}>
-              <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: colors.textMuted, margin: 0 }}>
-                Quality Check
-              </p>
-              <p style={{ fontSize: 13, fontWeight: 600, color: result.isFullSlabVisible ? colors.green : colors.red, margin: "2px 0 0" }}>
-                {result.isFullSlabVisible ? "Pass — Full Slab Visible" : "Fail — Full Slab Not Visible"}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Market pricing */}
-      {pricing && (pricing.low || pricing.mid || pricing.high) && (
-        <div
-          style={{
-            background: colors.surface,
-            border: `1px solid ${colors.border}`,
-            borderRadius: 10,
-            padding: "12px 14px",
-            marginBottom: 16,
-          }}
-        >
-          <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: colors.textMuted, marginBottom: 10 }}>
-            Market Pricing
-          </p>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-            {([
-              { label: pricing.labels[0], value: pricing.low },
-              { label: pricing.labels[1], value: pricing.mid },
-              { label: pricing.labels[2], value: pricing.high },
-            ] as { label: string; value: string | null }[]).map(({ label, value }) => (
-              <div key={label} style={{ textAlign: "center" }}>
-                <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: colors.textMuted, margin: "0 0 4px" }}>
-                  {label}
-                </p>
-                <p style={{ fontSize: 15, fontWeight: 700, color: value ? colors.textPrimary : colors.textMuted, margin: 0 }}>
-                  {value ? formatCurrency(parseFloat(value)) : "—"}
-                </p>
+                {/* Info */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: colors.textPrimary, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {result.year ? `${result.year} ` : ""}{result.name}
+                  </h3>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: gc, padding: "2px 6px", background: `${gc}18`, borderRadius: 4 }}>
+                      PSA {result.estimatedGrade}
+                    </span>
+                    <span style={{ fontSize: 11, color: colors.textMuted }}>
+                      {result.set}
+                    </span>
+                  </div>
+                  {!isValid && (
+                    <p style={{ fontSize: 11, color: colors.red, margin: "6px 0 0", fontWeight: 600 }}>
+                      Missing PSA Label or Cut Off
+                    </p>
+                  )}
+                </div>
               </div>
-            ))}
-          </div>
-          <p style={{ fontSize: 10, color: colors.textMuted, marginTop: 8, marginBottom: 0, textAlign: "right" }}>
-            Avg. market · {pricing.source}
-          </p>
+            );
+          })}
         </div>
       )}
 
-      {/* Confidence bar */}
-      <div
-        style={{
-          background: colors.surface,
-          border: `1px solid ${colors.border}`,
-          borderRadius: 10,
-          padding: "12px 14px",
-          marginBottom: 16,
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: colors.textMuted, margin: 0 }}>
-            AI Confidence
-          </p>
-          <span style={{ fontSize: 12, fontWeight: 700, color: conf.color }}>
-            {confPct}% — {conf.label}
-          </span>
-        </div>
-        <div style={{ height: 6, borderRadius: 99, background: colors.surfaceOverlay }}>
-          <div
-            style={{
-              height: "100%",
-              borderRadius: 99,
-              background: conf.color,
-              width: `${confPct}%`,
-              transition: "width 0.6s ease",
-            }}
-          />
-        </div>
-      </div>
-
-      {/* Notes */}
-      {result.notes && (
-        <div
-          style={{
-            background: colors.surfaceOverlay,
-            border: `1px solid ${colors.border}`,
-            borderRadius: 10,
-            padding: "12px 14px",
-            marginBottom: 20,
-          }}
-        >
-          <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: colors.textMuted, marginBottom: 6 }}>
-            Notes
-          </p>
-          <p style={{ fontSize: 13, color: colors.textSecondary, margin: 0, lineHeight: 1.5 }}>
-            {result.notes}
-          </p>
+      {/* Errors List */}
+      {errors.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 20 }}>
+          {errors.map((errItem) => (
+            <div
+              key={errItem.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                padding: "10px 12px",
+                background: "rgba(255,59,48,0.08)",
+                borderRadius: 10,
+                border: `1px solid ${colors.red}33`,
+              }}
+            >
+              <div
+                style={{
+                  width: 32,
+                  height: 48,
+                  borderRadius: 4,
+                  overflow: "hidden",
+                  flexShrink: 0,
+                }}
+              >
+                <img
+                  src={errItem.thumbDataUrl}
+                  alt="Error"
+                  style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.8 }}
+                />
+              </div>
+              <div style={{ minWidth: 0, flex: 1 }}>
+                <p style={{ fontSize: 13, fontWeight: 600, color: colors.red, margin: 0 }}>
+                  Analysis Failed
+                </p>
+                <p style={{ fontSize: 11, color: colors.red, margin: "2px 0 0", opacity: 0.8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {errItem.error || "Unknown error"}
+                </p>
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
       {/* Actions */}
       <button
         onClick={onAddToVault}
-        disabled={!result.certNumber || !result.isFullSlabVisible}
+        disabled={validToAddCount === 0}
         style={{
           width: "100%",
           padding: "14px 0",
           borderRadius: 12,
           fontSize: 15,
           fontWeight: 700,
-          cursor: result.certNumber && result.isFullSlabVisible ? "pointer" : "not-allowed",
+          cursor: validToAddCount > 0 ? "pointer" : "not-allowed",
           border: "none",
-          background: result.certNumber && result.isFullSlabVisible ? colors.green : colors.surfaceOverlay,
-          color: result.certNumber && result.isFullSlabVisible ? colors.textInverse : colors.textMuted,
+          background: validToAddCount > 0 ? colors.green : colors.surfaceOverlay,
+          color: validToAddCount > 0 ? colors.textInverse : colors.textMuted,
           marginBottom: 12,
         }}
       >
-        Add to Vault →
+        Add {validToAddCount > 0 ? validToAddCount : ""} valid {validToAddCount === 1 ? "card" : "cards"} to Vault →
       </button>
 
       <button
@@ -1160,7 +1001,7 @@ function ResultStage({
           color: colors.textSecondary,
         }}
       >
-        Scan Again
+        Discard & Scan Again
       </button>
     </>
   );
@@ -1171,10 +1012,10 @@ function ResultStage({
 // ─────────────────────────────────────────────────────────
 
 function ConfirmedStage({
-  cardName,
+  totalCount,
   onScanAgain,
 }: {
-  cardName: string;
+  totalCount: number;
   onScanAgain: () => void;
 }) {
   return (
@@ -1204,7 +1045,7 @@ function ConfirmedStage({
             letterSpacing: "-0.02em",
           }}
         >
-          Card Registered
+          {totalCount} {totalCount === 1 ? "Card" : "Cards"} Registered
         </h2>
         <p
           style={{
@@ -1214,8 +1055,7 @@ function ConfirmedStage({
             lineHeight: 1.5,
           }}
         >
-          <strong style={{ color: colors.textPrimary }}>{cardName}</strong>{" "}
-          has been registered as{" "}
+          They have been registered as{" "}
           <span
             style={{
               color: "#F5C842",
@@ -1229,7 +1069,7 @@ function ConfirmedStage({
           </span>
         </p>
         <p style={{ fontSize: 13, color: colors.textMuted, marginTop: 8 }}>
-          Ship your card within 14 days to complete registration
+          Ship your cards within 14 days to complete registration
         </p>
       </div>
 
@@ -1285,7 +1125,7 @@ function ConfirmedStage({
           color: colors.textSecondary,
         }}
       >
-        Scan Another Card
+        Scan More Cards
       </button>
     </div>
   );

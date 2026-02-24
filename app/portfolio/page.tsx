@@ -33,6 +33,7 @@ type ModalState =
   | { type: "list"; holdingId: string; price: string }
   | { type: "withdraw"; holdingId: string }
   | { type: "deposit" }
+  | { type: "ship"; holdingId: string }
   | null;
 
 type SortBy = "value" | "gain" | "name" | "date";

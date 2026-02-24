@@ -101,17 +101,56 @@ interface GlobalTickerProps {
 export function GlobalTicker({ items }: GlobalTickerProps) {
   const [liveItems, setLiveItems] = useState<AssetData[]>(items);
 
-  // Independent live simulation — updates ~3 items every 3 seconds
+  // Subscribe to live price changes
   useEffect(() => {
-    const interval = setInterval(() => {
-      setLiveItems((prev) =>
-        prev.map((item) =>
-          Math.random() > 0.5 ? item : tickPrice(item)
-        )
-      );
-    }, 3000);
+    let isMounted = true;
 
-    return () => clearInterval(interval);
+    async function initRealtime() {
+      const { supabase } = await import("@/lib/supabase");
+      if (!supabase) return;
+
+      const channel = supabase
+        .channel("public:prices")
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "prices" },
+          (payload) => {
+            if (!isMounted) return;
+            const newPrice = payload.new.price;
+            const newChange = payload.new.change_24h;
+            const newPct = payload.new.change_pct_24h;
+            const cardId = payload.new.card_id;
+
+            setLiveItems((prev) =>
+              prev.map((item) => {
+                if (item.id === cardId) {
+                  return {
+                    ...item,
+                    price: newPrice,
+                    change: newChange,
+                    changePct: newPct,
+                  };
+                }
+                return item;
+              })
+            );
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+
+    const cleanupPromise = initRealtime();
+
+    return () => {
+      isMounted = false;
+      cleanupPromise.then(cleanupFn => {
+        if (cleanupFn) cleanupFn();
+      });
+    };
   }, []);
 
   const doubled = [...liveItems, ...liveItems];

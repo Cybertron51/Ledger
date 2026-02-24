@@ -10,6 +10,7 @@
 // ─────────────────────────────────────────────────────────
 
 export interface AssetData {
+  id: string;
   name: string;
   symbol: string;
   grade: number;
@@ -22,12 +23,14 @@ export interface AssetData {
   low24h: number;
   category: "pokemon" | "sports";
   hasLiquidity?: boolean; // True if there are active listings for this card
+  population: number;
 }
 
 import type { DBCard } from "./db/cards";
 
 export function mapDBCardToAssetData(c: DBCard): AssetData {
   return {
+    id: c.id,
     name: c.name,
     symbol: c.symbol,
     grade: c.psa_grade,
@@ -40,6 +43,7 @@ export function mapDBCardToAssetData(c: DBCard): AssetData {
     low24h: c.low_24h ?? c.price,
     category: c.category as "pokemon" | "sports",
     hasLiquidity: false, // Will be populated by the frontend
+    population: c.population,
   };
 }
 
@@ -147,7 +151,6 @@ export function generateSparkline(
 // ─────────────────────────────────────────────────────────
 
 export function tickPrice(asset: AssetData): AssetData {
-  // Disable random ticks to keep the market stable and non-hallucinatory
   return asset;
 }
 

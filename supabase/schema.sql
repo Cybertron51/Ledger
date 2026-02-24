@@ -212,6 +212,7 @@ CREATE TABLE IF NOT EXISTS vault_holdings (
 CREATE INDEX IF NOT EXISTS idx_vh_user_id ON vault_holdings(user_id);
 CREATE INDEX IF NOT EXISTS idx_vh_card_id ON vault_holdings(card_id);
 CREATE INDEX IF NOT EXISTS idx_vh_status  ON vault_holdings(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vh_cert_number ON vault_holdings(cert_number) WHERE cert_number IS NOT NULL AND cert_number != '';
 
 -- RLS
 ALTER TABLE vault_holdings ENABLE ROW LEVEL SECURITY;

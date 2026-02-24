@@ -23,6 +23,7 @@ import {
   type AssetData,
   type TimeRange,
   type OrderBookRow,
+  type PricePoint,
   type OrderBook as OrderBookData
 } from "@/lib/market-data";
 import { SparklineChart } from "@/components/market/SparklineChart";
@@ -125,34 +126,107 @@ export default function MarketPage() {
     fetchAssets();
   }, []);
 
-  // ── Live price ticks ───────────────────────────────────
+  // ── Live price ticks via Realtime ───────────────────────────
   useEffect(() => {
-    const interval = setInterval(() => {
-      setAssets((prev) => {
-        const next = prev.map((asset) =>
-          Math.random() > 0.45 ? asset : tickPrice(asset)
-        );
-        const flashes: Record<string, "up" | "down"> = {};
-        next.forEach((asset, i) => {
-          if (asset.price !== prev[i].price)
-            flashes[asset.symbol] = asset.price > prev[i].price ? "up" : "down";
-        });
-        if (Object.keys(flashes).length > 0) {
-          setFlashMap(flashes);
-          setTimeout(() => setFlashMap({}), 500);
-        }
-        return next;
+    let isMounted = true;
+
+    async function initRealtime() {
+      const { supabase } = await import("@/lib/supabase");
+      if (!supabase) return;
+
+      const channel = supabase
+        .channel("public:prices:market")
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "prices" },
+          (payload) => {
+            if (!isMounted) return;
+            const newPrice = payload.new.price;
+            const newChange = payload.new.change_24h;
+            const newPct = payload.new.change_pct_24h;
+            const cardId = payload.new.card_id;
+
+            setAssets((prev) => {
+              const next = [...prev];
+              const idx = next.findIndex(a => a.id === cardId);
+              if (idx === -1) return prev;
+
+              const oldAsset = next[idx];
+              if (oldAsset.price !== newPrice) {
+                // Trigger flash animation
+                const flashDir = newPrice > oldAsset.price ? "up" : "down";
+                setFlashMap((fm) => ({ ...fm, [oldAsset.symbol]: flashDir }));
+                setTimeout(() => {
+                  if (isMounted) {
+                    setFlashMap((fm) => {
+                      const newFm = { ...fm };
+                      delete newFm[oldAsset.symbol];
+                      return newFm;
+                    });
+                  }
+                }, 500);
+              }
+
+              next[idx] = {
+                ...oldAsset,
+                price: newPrice,
+                change: newChange,
+                changePct: newPct,
+              };
+
+              return next;
+            });
+          }
+        )
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
+    }
+
+    const cleanupPromise = initRealtime();
+
+    return () => {
+      isMounted = false;
+      cleanupPromise.then(cleanupFn => {
+        if (cleanupFn) cleanupFn();
       });
-    }, 2500);
-    return () => clearInterval(interval);
+    };
   }, []);
 
   // ── Chart data ─────────────────────────────────────────
-  const chartData = useMemo(
-    () => selected ? generateHistory(selected.price, selected.changePct, range, selected.symbol) : [],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [selected?.symbol, range]
-  );
+  const [chartData, setChartData] = useState<PricePoint[]>([]);
+
+  useEffect(() => {
+    if (!selected) return;
+
+    let isMounted = true;
+    const days = range === "1D" ? 1 : range === "1W" ? 7 : range === "1M" ? 30 : range === "3M" ? 90 : 365;
+
+    async function fetchHistory() {
+      const { getPriceHistory } = await import("@/lib/db/cards");
+      const history = await getPriceHistory(selected!.id, days);
+
+      if (!isMounted) return;
+
+      const formatted = history.map(point => ({
+        time: new Date(point.recorded_at).getTime(),
+        price: point.price
+      }));
+
+      // In case we don't have enough history, fallback to at least the current price
+      if (formatted.length === 0) {
+        setChartData([{ time: Date.now(), price: selected!.price }]);
+      } else {
+        setChartData(formatted);
+      }
+    }
+
+    fetchHistory();
+
+    return () => { isMounted = false; };
+  }, [selected?.id, range]);
 
   // ── Sparklines (generated once) ────────────────────────
   const sparklines = useMemo(
@@ -444,6 +518,7 @@ export default function MarketPage() {
             { label: "24H High", value: formatCurrency(selected.high24h) },
             { label: "24H Low", value: formatCurrency(selected.low24h) },
             { label: "Volume", value: `${selected.volume24h} cop.` },
+            { label: "Population", value: selected.population.toLocaleString() },
             { label: "Category", value: selected.category === "pokemon" ? "Pokémon" : "Sports" },
           ].map((stat, i) => (
             <div
