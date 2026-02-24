@@ -12,8 +12,6 @@
 export interface AssetData {
   name: string;
   symbol: string;
-  /** On-chain ERC-1155 token ID in CardNFT */
-  tokenId: number;
   grade: number;
   price: number;
   change: number;
@@ -32,7 +30,6 @@ export function mapDBCardToAssetData(c: DBCard): AssetData {
   return {
     name: c.name,
     symbol: c.symbol,
-    tokenId: 0, // Mock id, since it's no longer used for on-chain
     grade: c.psa_grade,
     price: c.price,
     change: c.change_24h,

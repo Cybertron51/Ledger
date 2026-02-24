@@ -147,8 +147,8 @@ CREATE TABLE IF NOT EXISTS profiles (
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users can read own profile" ON profiles;
-CREATE POLICY "Users can read own profile"
-  ON profiles FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Public read profiles"
+  ON profiles FOR SELECT USING (true);
 
 -- Auto-update updated_at for profiles
 DROP TRIGGER IF EXISTS trg_profiles_updated_at ON profiles;
@@ -219,6 +219,9 @@ DROP POLICY IF EXISTS "Public read vault_holdings" ON vault_holdings;
 
 CREATE POLICY "Public read vault_holdings"
   ON vault_holdings FOR SELECT USING (true);
+
+CREATE POLICY "Users can update own vault_holdings"
+  ON vault_holdings FOR UPDATE USING (auth.uid() = user_id);
   
 -- Auto-update updated_at for vault_holdings
 DROP TRIGGER IF EXISTS trg_vh_updated_at ON vault_holdings;

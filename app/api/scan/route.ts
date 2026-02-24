@@ -2,15 +2,15 @@
  * TASH — Card Scan API
  *
  * POST /api/scan
- * Accepts a base64-encoded card image, sends it to Claude for AI identification,
+ * Accepts a base64-encoded card image, sends it to Gemini for AI identification,
  * and returns structured card data plus an optional matched market symbol.
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getMarketCards } from "@/lib/db/cards";
 
-const client = new Anthropic();
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_GENERATIVE_API_KEY ?? "");
 
 const PROMPT = `Analyze this trading card image and return ONLY a JSON object — no markdown, no code fences, no explanation.
 
@@ -343,32 +343,19 @@ export async function POST(req: NextRequest) {
       ? `${PROMPT}\n\nHere is the raw text extracted from the image via OCR to help you identify the certification number, card name, and grade accurately:\n<ocr_text>\n${ocrText}\n</ocr_text>`
       : PROMPT;
 
-    const message = await client.messages.create({
-      model: "claude-3-5-sonnet-latest",
-      max_tokens: 1024,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: mimeType as "image/jpeg" | "image/png" | "image/gif" | "image/webp",
-                data: imageBase64,
-              },
-            },
-            {
-              type: "text",
-              text: finalPrompt,
-            },
-          ],
-        },
-      ],
-    });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-    const rawText =
-      message.content[0].type === "text" ? message.content[0].text : "";
+    const result = await model.generateContent([
+      {
+        inlineData: {
+          mimeType: mimeType,
+          data: imageBase64,
+        },
+      },
+      { text: finalPrompt },
+    ]);
+
+    const rawText = result.response.text();
 
     // Strip markdown code fences if present
     const cleaned = rawText

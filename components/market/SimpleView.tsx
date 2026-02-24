@@ -11,7 +11,7 @@
  */
 
 import { useState, useMemo, useEffect } from "react";
-import { Search, ChevronRight, CheckCircle, Loader2, ExternalLink, Lock, X } from "lucide-react";
+import { Search, ChevronRight, CheckCircle, Loader2, Lock, X } from "lucide-react";
 import { colors } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -115,7 +115,7 @@ function TradeModal({
   const [quantity, setQuantity] = useState(1);
   const [stage, setStage] = useState<"form" | "submitting" | "confirmed" | "error">("form");
   const [errorMsg, setErrorMsg] = useState("");
-  const [txHash, setTxHash] = useState<string | undefined>();
+
 
   // Reset price to market default when side changes
   useEffect(() => {
@@ -158,7 +158,7 @@ function TradeModal({
       if (side === "buy") updateBalance(-total);
       else updateBalance(total);
 
-      setTxHash(data.txHash);
+
       setStage("confirmed");
       setTimeout(onClose, 4000);
     } catch (err) {
@@ -213,18 +213,8 @@ function TradeModal({
             <CheckCircle size={36} strokeWidth={1.5} style={{ color: colors.green }} />
             <p className="text-[16px] font-bold" style={{ color: colors.textPrimary }}>Order placed</p>
             <p className="text-[12px]" style={{ color: colors.textMuted }}>
-              Your {side} order has been submitted to the book.
+              Your {side} order has been submitted.
             </p>
-            {txHash && (
-              <a
-                href={`https://sepolia.basescan.org/tx/${txHash}`}
-                target="_blank" rel="noopener noreferrer"
-                className="flex items-center gap-1 text-[12px]"
-                style={{ color: colors.green }}
-              >
-                View on-chain <ExternalLink size={11} />
-              </a>
-            )}
           </div>
         )}
 

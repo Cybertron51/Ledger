@@ -17,6 +17,7 @@ import Image from "next/image";
 import { tickPrice, generateHistory, type TimeRange, type AssetData } from "@/lib/market-data";
 import { PriceChart } from "@/components/market/PriceChart";
 import { getScannedHoldings, type VaultHolding } from "@/lib/vault-data";
+import { updateVaultHoldingStatus } from "@/lib/db/vault";
 import { usePortfolio } from "@/lib/portfolio-context";
 import { useAuth } from "@/lib/auth";
 import { SignInModal } from "@/components/auth/SignInModal";
@@ -144,16 +145,10 @@ export default function PortfolioPage() {
     if (!holding || !user || !supabase) return;
 
     try {
-      // Create a sell order in the matching engine
-      const { error } = await supabase.rpc('place_order', {
-        p_user_id: user.id,
-        p_symbol: holding.symbol,
-        p_type: 'sell',
-        p_price: price,
-        p_quantity: 1
+      await updateVaultHoldingStatus(modalState.holdingId, user.id, {
+        status: "listed",
+        listingPrice: price
       });
-
-      if (error) throw error;
 
       // Update local state if successful
       updateHolding(modalState.holdingId, {
@@ -179,31 +174,13 @@ export default function PortfolioPage() {
 
   async function handleCancelListing(id: string) {
     const holding = holdings.find((h) => h.id === id);
-    if (!holding || !supabase) return;
+    if (!holding || !supabase || !user) return;
 
     try {
-      // Find open sell order for this card
-      const { data: openOrders, error: findErr } = await supabase
-        .from('orders')
-        .select('id')
-        .eq('user_id', user?.id)
-        .eq('symbol', holding.symbol)
-        .eq('type', 'sell')
-        .eq('status', 'open');
-
-      if (findErr) throw findErr;
-
-      // Cancel resting orders
-      if (openOrders && openOrders.length > 0) {
-        // Technically there could be multiple but we'll cancel the first one we find
-        // that matches this holding's symbol
-        const { error: cancelErr } = await supabase
-          .from('orders')
-          .update({ status: 'cancelled' })
-          .eq('id', openOrders[0].id);
-
-        if (cancelErr) throw cancelErr;
-      }
+      await updateVaultHoldingStatus(id, user.id, {
+        status: "in_vault",
+        listingPrice: null
+      });
 
       // Revert status
       updateHolding(id, { status: "in_vault", listingPrice: undefined });
@@ -1140,7 +1117,7 @@ function DetailPanel({ holding, currentValue, changePct, onOpenListModal, onCanc
       {/* Stats row */}
       <div className="mt-5 grid grid-cols-4 overflow-hidden rounded-[10px] border" style={{ borderColor: colors.border, background: colors.surface }}>
         {[
-          { label: "Current Value", value: formatCurrency(currentValue), valueColor: colors.textPrimary },
+          { label: "Last Sale Price", value: formatCurrency(currentValue), valueColor: colors.textPrimary },
           { label: "Acquisition Price", value: formatCurrency(holding.acquisitionPrice), valueColor: colors.textPrimary },
           {
             label: "Gain / Loss",

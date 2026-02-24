@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { CheckCircle, Lock, Loader2, ExternalLink } from "lucide-react";
+import { CheckCircle, Lock, Loader2 } from "lucide-react";
 import { colors } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
@@ -163,25 +163,11 @@ export function TradePanel({ asset, onRequestSignIn }: TradePanelProps) {
         </p>
         <p className="text-[11px]" style={{ color: colors.textSecondary }}>
           {result.status === "settled"
-            ? "Settled on-chain · ownership transferred"
+            ? "Settled · ownership transferred"
             : "In order book · awaiting match"}
         </p>
-        {result.txHash && (
-          <a
-            href={`https://sepolia.basescan.org/tx/${result.txHash}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center gap-1 text-[11px] font-medium"
-            style={{ color: colors.green }}
-          >
-            View transaction
-            <ExternalLink size={10} />
-          </a>
-        )}
         <p className="mt-1 text-[10px]" style={{ color: colors.textMuted }}>
-          {result.txHash
-            ? result.txHash.slice(0, 10) + "…" + result.txHash.slice(-8)
-            : result.message}
+          {result.message}
         </p>
       </div>
     );
