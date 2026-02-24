@@ -2,11 +2,11 @@ import * as dotenv from 'dotenv';
 import { resolve } from 'path';
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = 'http://127.0.0.1:54321';
-const supabaseKey = 'sb_secret_N7UND0UgjKTVK-Uodkm0Hg_xSvEMPvz';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseUrl || !supabaseKey) {
-  console.error("Missing Supabase admin credentials.");
+  console.error("Missing Supabase admin credentials. Make sure your .env is loaded.");
   process.exit(1);
 }
 
@@ -38,29 +38,29 @@ async function main() {
 
   for (const card of cards) {
     let currentPrice = priceMap.get(card.id) || 1000;
-    
-    for (let day = 0; day < daysToSeed; day++) {
-       const pctChange = (Math.random() * 0.1 - 0.05);
-       const simulatedPrice = Math.max(10, currentPrice * (1 - pctChange));
-       
-       dataToInsert.push({
-         card_id: card.id,
-         price: Number(simulatedPrice.toFixed(2)),
-         recorded_at: new Date(Date.now() - (day * 24 * 60 * 60 * 1000)).toISOString()
-       });
 
-       currentPrice = simulatedPrice;
+    for (let day = 0; day < daysToSeed; day++) {
+      const pctChange = (Math.random() * 0.1 - 0.05);
+      const simulatedPrice = Math.max(10, currentPrice * (1 - pctChange));
+
+      dataToInsert.push({
+        card_id: card.id,
+        price: Number(simulatedPrice.toFixed(2)),
+        recorded_at: new Date(Date.now() - (day * 24 * 60 * 60 * 1000)).toISOString()
+      });
+
+      currentPrice = simulatedPrice;
     }
   }
 
   console.log(`Inserting ${dataToInsert.length} data points...`);
-  
+
   const chunkSize = 500;
   for (let i = 0; i < dataToInsert.length; i += chunkSize) {
     const chunk = dataToInsert.slice(i, i + chunkSize);
     const { error: insErr } = await supabase.from('price_history').insert(chunk);
     if (insErr) {
-       console.error("Failed to insert chunk:", insErr);
+      console.error("Failed to insert chunk:", insErr);
     }
   }
 
