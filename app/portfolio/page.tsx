@@ -517,7 +517,7 @@ export default function PortfolioPage() {
                     style={{ width: 32, height: 44, border: `1px solid ${colors.border}`, background: colors.surface }}
                   >
                     <Image
-                      src={holding.imageUrl} alt={holding.name} width={32} height={44}
+                      src={holding.imageUrl || `/cards/${holding.symbol}.svg`} alt={holding.name} width={32} height={44}
                       style={{ width: "100%", height: "100%", objectFit: "cover" }} unoptimized
                     />
                   </div>
@@ -1059,6 +1059,10 @@ interface DetailPanelProps {
 }
 
 function DetailPanel({ holding, currentValue, changePct, onOpenListModal, onCancelListing, onOpenWithdrawModal, onOpenShipModal }: DetailPanelProps) {
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const officialImage = holding.imageUrl || `/cards/${holding.symbol}.svg`;
+  const images = holding.rawImageUrl ? [officialImage, holding.rawImageUrl] : [officialImage];
+
   const [range, setRange] = useState<TimeRange>("1M");
   const chartData = generateHistory(currentValue, changePct, range, holding.symbol);
   const isUp = changePct >= 0;
@@ -1086,14 +1090,42 @@ function DetailPanel({ holding, currentValue, changePct, onOpenListModal, onCanc
       {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4 border-b pb-5" style={{ borderColor: colors.border }}>
         <div className="flex items-start gap-4">
-          <div
-            className="shrink-0 overflow-hidden rounded-[8px]"
-            style={{ width: 120, height: 168, border: `1px solid ${colors.border}`, background: colors.surface }}
-          >
-            <Image
-              src={holding.imageUrl} alt={holding.name} width={120} height={168}
-              style={{ width: "100%", height: "100%", objectFit: "cover" }} unoptimized
-            />
+          <div className="flex flex-col items-center gap-2">
+            <div
+              onClick={() => {
+                if (images.length > 1) {
+                  setActiveImageIndex((prev) => (prev + 1) % images.length);
+                }
+              }}
+              className="shrink-0 overflow-hidden rounded-[8px]"
+              style={{
+                width: 120, height: 168, border: `1px solid ${colors.border}`, background: colors.surface,
+                cursor: images.length > 1 ? "pointer" : "default"
+              }}
+            >
+              {images[activeImageIndex] && (
+                <Image
+                  src={images[activeImageIndex]!} alt={holding.name} width={120} height={168}
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }} unoptimized
+                />
+              )}
+            </div>
+            {/* Carousel dots */}
+            {images.length > 1 && (
+              <div className="flex gap-1.5">
+                {images.map((_, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: "50%",
+                      background: i === activeImageIndex ? colors.textPrimary : colors.borderSubtle,
+                    }}
+                  />
+                ))}
+              </div>
+            )}
           </div>
           <div>
             <div className="flex items-center gap-2">

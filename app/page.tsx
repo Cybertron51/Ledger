@@ -19,11 +19,11 @@ import { SimpleView } from "@/components/market/SimpleView";
 import {
   generateHistory,
   generateSparkline,
-  generateOrderBook,
   tickPrice,
   type AssetData,
   type TimeRange,
   type OrderBookRow,
+  type OrderBook as OrderBookData
 } from "@/lib/market-data";
 import { SparklineChart } from "@/components/market/SparklineChart";
 import { PriceChart } from "@/components/market/PriceChart";
@@ -78,6 +78,8 @@ export default function MarketPage() {
   const [flashMap, setFlashMap] = useState<Record<string, "up" | "down">>({});
   const [showSignIn, setShowSignIn] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("simple");
+  const [dashboardTab, setDashboardTab] = useState<"image" | "chart">("image");
+  const [activeMarketImageIndex, setActiveMarketImageIndex] = useState(0);
   const { holdings } = usePortfolio();
 
   // Persist view preference
@@ -163,21 +165,26 @@ export default function MarketPage() {
   );
 
   // ── Order book ─────────────────────────────────────────
-  const orderBook = useMemo(() => {
-    if (!selected) return null;
+  const [orderBook, setOrderBook] = useState<OrderBookData | null>(null);
 
-    // Inject user's listed cards into the asks
-    const userAsks: OrderBookRow[] = holdings
-      .filter(h => h.symbol === selected.symbol && h.status === "listed" && h.listingPrice)
-      .map(h => ({
-        price: h.listingPrice!,
-        size: 1,
-        total: 1, // Will be recalculated by generateOrderBook
-        depth: 0,
-      }));
+  useEffect(() => {
+    if (!selected) {
+      setOrderBook(null);
+      return;
+    }
+    let isActive = true;
 
-    return generateOrderBook(selected.price, selected.symbol, userAsks);
-  }, [selected?.symbol, selected ? Math.round(selected.price / 10) : 0, holdings]);
+    async function loadBook() {
+      const { fetchOrderBook } = await import("@/lib/db/orders");
+      const book = await fetchOrderBook(selected!.symbol);
+      if (isActive) {
+        setOrderBook(book);
+      }
+    }
+
+    loadBook();
+    return () => { isActive = false; };
+  }, [selected?.symbol, holdings]);
 
   const chromeOffset = layout.chromeHeight;
 
@@ -346,11 +353,92 @@ export default function MarketPage() {
           </div>
         </div>
 
-        <div className="px-6 pt-5 pb-2">
-          <PriceChart data={chartData} isUp={isUp} range={range} onRangeChange={setRange} />
+        <div className="px-6 pt-4 border-b" style={{ borderColor: colors.border }}>
+          <div className="flex gap-6">
+            <button
+              onClick={() => setDashboardTab("image")}
+              className="pb-3 text-[13px] font-bold uppercase tracking-wider transition-colors"
+              style={{
+                color: dashboardTab === "image" ? colors.textPrimary : colors.textMuted,
+                borderBottom: `2px solid ${dashboardTab === "image" ? colors.green : "transparent"}`,
+              }}
+            >
+              Image
+            </button>
+            <button
+              onClick={() => setDashboardTab("chart")}
+              className="pb-3 text-[13px] font-bold uppercase tracking-wider transition-colors"
+              style={{
+                color: dashboardTab === "chart" ? colors.textPrimary : colors.textMuted,
+                borderBottom: `2px solid ${dashboardTab === "chart" ? colors.green : "transparent"}`,
+              }}
+            >
+              Price Chart
+            </button>
+          </div>
         </div>
 
-        <div className="mx-6 my-3 grid grid-cols-4 overflow-hidden rounded-[10px] border"
+        <div className="px-6 py-5">
+          {dashboardTab === "image" ? (
+            <div className="flex flex-col items-center justify-center rounded-[10px] gap-4" style={{ minHeight: 300 }}>
+              {(() => {
+                const h = holdings?.find(h => h.symbol === selected.symbol);
+                const officialImage = h?.imageUrl || `/cards/${selected.symbol}.svg`;
+                const images = h?.rawImageUrl ? [officialImage, h.rawImageUrl] : [officialImage];
+
+                return (
+                  <div className="flex flex-col items-center gap-3">
+                    <div
+                      onClick={() => {
+                        if (images.length > 1) {
+                          // Local cycle using a data attribute or inline state hack is tricky,
+                          // let's just cycle based on a global variable for this simple demo, 
+                          // or better yet we added `activeImageIndex` to MarketPage state!
+                          setActiveMarketImageIndex((prev) => (prev + 1) % images.length);
+                        }
+                      }}
+                      className="relative overflow-hidden shrink-0"
+                      style={{
+                        width: 220, height: 310, borderRadius: 12,
+                        border: `1px solid ${colors.borderSubtle}`,
+                        cursor: images.length > 1 ? "pointer" : "default",
+                      }}
+                    >
+                      <img
+                        src={images[activeMarketImageIndex] || images[0]}
+                        alt={selected.name}
+                        className="object-cover w-full h-full"
+                        onError={(e) => {
+                          e.currentTarget.src = "https://via.placeholder.com/220x310/1B1B1B/333333?text=Card+Image";
+                        }}
+                      />
+                    </div>
+                    {/* Carousel dots */}
+                    {images.length > 1 && (
+                      <div className="flex gap-1.5">
+                        {images.map((_, i) => (
+                          <div
+                            key={i}
+                            style={{
+                              width: 6,
+                              height: 6,
+                              borderRadius: "50%",
+                              background: i === activeMarketImageIndex ? colors.textPrimary : colors.borderSubtle,
+                            }}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          ) : (
+            <PriceChart data={chartData} isUp={isUp} range={range} onRangeChange={setRange} />
+          )}
+        </div>
+
+        <div className="mx-6 my-3 grid grid-cols-4 overflow-hidden rounded-[10px] border mb-8"
           style={{ borderColor: colors.border, background: colors.surface }}>
           {[
             { label: "24H High", value: formatCurrency(selected.high24h) },
@@ -371,46 +459,6 @@ export default function MarketPage() {
               </span>
             </div>
           ))}
-        </div>
-
-        <div className="px-6 pb-8">
-          <h2 className="mb-3 text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: colors.textMuted }}>
-            All Assets
-          </h2>
-          <div className="grid grid-cols-2 gap-2 xl:grid-cols-3">
-            {assets.map((asset) => {
-              const assetUp = asset.change >= 0;
-              const isSel = asset.symbol === selectedSymbol;
-              return (
-                <button
-                  key={asset.symbol}
-                  onClick={() => setSelectedSymbol(asset.symbol)}
-                  className="flex items-center justify-between rounded-[10px] border px-3 py-[10px] text-left transition-all duration-150 hover:border-[#3e3e3e]"
-                  style={{
-                    borderColor: isSel ? colors.green + "66" : colors.border,
-                    background: isSel ? colors.greenMuted : colors.surface,
-                  }}
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-[12px] font-semibold leading-tight" style={{ color: colors.textPrimary }}>
-                      {asset.name}
-                    </p>
-                    <p className="mt-[2px] text-[10px] uppercase tracking-wider" style={{ color: colors.textMuted }}>
-                      PSA {asset.grade} · {asset.category === "pokemon" ? "Pokémon" : "Sports"}
-                    </p>
-                  </div>
-                  <div className="ml-2 shrink-0 text-right">
-                    <p className="tabular-nums text-[13px] font-bold" style={{ color: colors.textPrimary }}>
-                      {formatCurrency(asset.price, { compact: true })}
-                    </p>
-                    <p className="mt-[1px] tabular-nums text-[11px] font-semibold" style={{ color: assetUp ? colors.green : colors.red }}>
-                      {assetUp ? "+" : ""}{asset.changePct.toFixed(2)}%
-                    </p>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
         </div>
       </main>
 

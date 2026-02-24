@@ -202,6 +202,7 @@ CREATE TABLE IF NOT EXISTS vault_holdings (
   
   cert_number      TEXT,                                      -- PSA cert number
   image_url        TEXT,                                      -- user uploaded photo or default card image
+  raw_image_url    TEXT,                                      -- the raw photo taken by the user
   
   created_at       TIMESTAMPTZ DEFAULT NOW(),
   updated_at       TIMESTAMPTZ DEFAULT NOW()
@@ -222,6 +223,9 @@ CREATE POLICY "Public read vault_holdings"
 
 CREATE POLICY "Users can update own vault_holdings"
   ON vault_holdings FOR UPDATE USING (auth.uid() = user_id);
+  
+CREATE POLICY "Users can insert own vault_holdings"
+  ON vault_holdings FOR INSERT WITH CHECK (auth.uid() = user_id);
   
 -- Auto-update updated_at for vault_holdings
 DROP TRIGGER IF EXISTS trg_vh_updated_at ON vault_holdings;
@@ -326,12 +330,33 @@ USING (bucket_id = 'scans');
 
 -- Allow authenticated users to upload scans
 DROP POLICY IF EXISTS "Authenticated users can upload" ON storage.objects;
-CREATE POLICY "Authenticated users can upload"
-ON storage.objects FOR INSERT
-WITH CHECK (
-  bucket_id = 'scans' AND 
-  auth.role() = 'authenticated'
-);
+CREATE POLICY "Auth Uploads" 
+  ON storage.objects FOR INSERT 
+  WITH CHECK (
+    auth.role() = 'authenticated' AND
+    bucket_id = 'scans' AND
+    (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+-- Set up "card_images" bucket for PSA API downloaded images
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('card_images', 'card_images', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Allow public read access to the card_images bucket
+DROP POLICY IF EXISTS "Public Access Card Images" ON storage.objects;
+CREATE POLICY "Public Access Card Images" 
+  ON storage.objects FOR SELECT 
+  USING (bucket_id = 'card_images');
+
+-- Allow authenticated users to upload to the card_images bucket (API handles uploads)
+DROP POLICY IF EXISTS "Auth Uploads Card Images" ON storage.objects;
+CREATE POLICY "Auth Uploads Card Images" 
+  ON storage.objects FOR INSERT 
+  WITH CHECK (
+    auth.role() = 'authenticated' AND
+    bucket_id = 'card_images'
+  );
 
 -- ── Limit Orders (Bids & Asks) ──────────────────────────────
 -- Represents an open intent to buy or sell a card at a specific price

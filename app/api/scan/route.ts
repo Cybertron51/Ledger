@@ -9,6 +9,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getMarketCards } from "@/lib/db/cards";
+import { fetchPSAImage, uploadCardImageToStorage, uploadRawScanToStorage } from "@/lib/psa";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_GENERATIVE_API_KEY ?? "");
 
@@ -31,7 +32,8 @@ Return exactly this structure:
     "centering": "well-centered",
     "edges": "clean"
   },
-  "notes": "Brief observations about grade potential"
+  "notes": "Brief observations about grade potential",
+  "isFullSlabVisible": true
 }
 
 Valid values:
@@ -44,39 +46,10 @@ Valid values:
 - surfaces: "clean" | "light scratches" | "scratched" | "heavily scratched"
 - centering: "well-centered" | "slightly off-center" | "off-center" | "severely off-center"
 - edges: "clean" | "slightly worn" | "worn" | "heavily worn"
+- isFullSlabVisible: boolean. Set to true ONLY if the entire PSA slab (both the label at the top and the full trading card body) is clearly visible in the image. If it is cut off, poorly framed, or zoomed in too much, set to false.
 
 If the image is unclear, return your best estimate with a low confidence value. Return ONLY the JSON.`;
 
-// ─────────────────────────────────────────────────────────
-// Google Cloud Vision OCR
-// ─────────────────────────────────────────────────────────
-
-async function detectTextWithGoogleVision(base64Image: string): Promise<string | null> {
-  const apiKey = process.env.GOOGLE_CLOUD_VISION_KEY;
-  if (!apiKey) return null;
-
-  try {
-    const url = `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`;
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        requests: [
-          {
-            image: { content: base64Image },
-            features: [{ type: "TEXT_DETECTION" }],
-          },
-        ],
-      }),
-    });
-
-    const data = await response.json();
-    return data.responses?.[0]?.fullTextAnnotation?.text || null;
-  } catch (err) {
-    console.error("Google Vision API error:", err);
-    return null;
-  }
-}
 
 // ─────────────────────────────────────────────────────────
 // Card image lookup
@@ -338,12 +311,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const ocrText = await detectTextWithGoogleVision(imageBase64);
-    const finalPrompt = ocrText
-      ? `${PROMPT}\n\nHere is the raw text extracted from the image via OCR to help you identify the certification number, card name, and grade accurately:\n<ocr_text>\n${ocrText}\n</ocr_text>`
-      : PROMPT;
-
-    const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
     const result = await model.generateContent([
       {
@@ -352,7 +320,7 @@ export async function POST(req: NextRequest) {
           data: imageBase64,
         },
       },
-      { text: finalPrompt },
+      { text: PROMPT },
     ]);
 
     const rawText = result.response.text();
@@ -386,16 +354,37 @@ export async function POST(req: NextRequest) {
       );
     });
 
-    // Look up image + pricing in parallel
-    const [imageUrl, pricing] = await Promise.all([
-      lookupCardImage(card),
+    // Sub-routine to get the best image URL: 
+    // 1. Try PSA API and upload to Supabase if cert exists
+    // 2. Fall back to existing lookupCardImage logic
+    async function determineImageUrl(cardData: any): Promise<string | null> {
+      if (cardData.certNumber) {
+        console.log(`Attempting to fetch PSA image for cert ${cardData.certNumber}`);
+        const psaImageUrl = await fetchPSAImage(cardData.certNumber);
+        if (psaImageUrl) {
+          console.log(`Found PSA image, uploading to Supabase...`);
+          const supabaseUrl = await uploadCardImageToStorage(psaImageUrl, cardData.certNumber);
+          if (supabaseUrl) {
+            console.log(`Successfully uploaded PSA image: ${supabaseUrl}`);
+            return supabaseUrl;
+          }
+        }
+      }
+      return lookupCardImage(cardData);
+    }
+
+    // Look up image, pricing, and upload raw scan in parallel
+    const [imageUrl, pricing, rawImageUrl] = await Promise.all([
+      determineImageUrl(card),
       lookupPricing(card),
+      uploadRawScanToStorage(imageBase64, mimeType),
     ]);
 
     return NextResponse.json({
       card,
       matchedSymbol: matchedAsset?.symbol ?? null,
       imageUrl,
+      rawImageUrl,
       pricing,
     });
   } catch (error) {

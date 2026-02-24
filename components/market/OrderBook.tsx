@@ -73,7 +73,7 @@ export function OrderBook({ orderBook }: OrderBookProps) {
       >
         <span>Spread</span>
         <span className="tabular-nums font-semibold" style={{ color: colors.textSecondary }}>
-          {formatCurrency(orderBook.spread)} ({orderBook.spreadPct.toFixed(2)}%)
+          {formatCurrency(orderBook.spread)} ({(orderBook.spreadPct * 100).toFixed(2)}%)
         </span>
       </div>
 

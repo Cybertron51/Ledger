@@ -18,7 +18,7 @@ import { useAuth } from "@/lib/auth";
 import { SparklineChart } from "./SparklineChart";
 import type { VaultHolding } from "@/lib/vault-data";
 import type { AssetData, PricePoint } from "@/lib/market-data";
-import { generateOrderBook } from "@/lib/market-data";
+
 import { usePortfolio } from "@/lib/portfolio-context";
 import { supabase } from "@/lib/supabase";
 
@@ -98,15 +98,20 @@ function TradeModal({
 }) {
   const { user, updateBalance } = useAuth();
 
-  const orderBook = useMemo(
-    () => generateOrderBook(asset.price, asset.symbol),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [asset.symbol]
-  );
+  const [bestBid, setBestBid] = useState(asset.price * 0.995);
+  const [bestAsk, setBestAsk] = useState(asset.price * 1.005);
 
-  // Best bid = first entry (highest); best ask = last entry (lowest, since asks are reversed highest-first)
-  const bestBid = orderBook.bids[0]?.price ?? asset.price * 0.995;
-  const bestAsk = orderBook.asks[orderBook.asks.length - 1]?.price ?? asset.price * 1.005;
+  useEffect(() => {
+    let isActive = true;
+    import("@/lib/db/orders").then(({ fetchOrderBook }) => {
+      fetchOrderBook(asset.symbol).then((book) => {
+        if (!isActive) return;
+        setBestBid(book.bids[0]?.price ?? asset.price * 0.995);
+        setBestAsk(book.asks[book.asks.length - 1]?.price ?? asset.price * 1.005);
+      });
+    });
+    return () => { isActive = false; };
+  }, [asset.symbol, asset.price]);
 
   const [side, setSide] = useState<TradeSide>(initialSide);
   const [priceStr, setPriceStr] = useState(() =>
@@ -275,7 +280,7 @@ function TradeModal({
                   Spread
                 </p>
                 <p className="tabular-nums text-[11px] font-semibold" style={{ color: colors.textSecondary }}>
-                  {orderBook.spreadPct.toFixed(2)}%
+                  {(bestAsk > 0 ? ((Math.max(0, bestAsk - bestBid)) / bestAsk) * 100 : 0).toFixed(2)}%
                 </p>
               </div>
               <div className="text-center">

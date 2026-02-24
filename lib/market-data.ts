@@ -140,58 +140,7 @@ export function generateSparkline(
 // Order book generator
 // ─────────────────────────────────────────────────────────
 
-export function generateOrderBook(midPrice: number, symbol: string, userAsks: OrderBookRow[] = []): OrderBook {
-  const rng = makeRng(symbolSeed(symbol + "book"));
-  const spreadBps = 40 + rng() * 40; // 40–80 bps
-  const half = (midPrice * spreadBps) / 20000;
-  const askBase = midPrice + half;
-  const bidBase = midPrice - half;
 
-  let asks: OrderBookRow[] = [];
-  const bids: OrderBookRow[] = [];
-  let askTotal = 0;
-  let bidTotal = 0;
-
-  const levels = 12;
-  for (let i = 0; i < levels; i++) {
-    const askPrice = askBase * (1 + i * 0.002);
-    const askSize = Math.ceil(rng() * 3);
-    askTotal += askSize;
-    asks.push({ price: askPrice, size: askSize, total: askTotal, depth: 0 });
-
-    const bidPrice = bidBase * (1 - i * 0.002);
-    const bidSize = Math.ceil(rng() * 3);
-    bidTotal += bidSize;
-    bids.push({ price: bidPrice, size: bidSize, total: bidTotal, depth: 0 });
-  }
-
-  // Inject real user asks and recalculate totals
-  if (userAsks.length > 0) {
-    asks = [...asks, ...userAsks].sort((a, b) => a.price - b.price);
-    askTotal = 0;
-    asks.forEach((a) => {
-      askTotal += a.size;
-      a.total = askTotal;
-    });
-  }
-
-  const maxTotal = Math.max(
-    asks[asks.length - 1]?.total || 0,
-    bids[bids.length - 1]?.total || 0
-  );
-
-  if (maxTotal > 0) {
-    asks.forEach((a) => { a.depth = a.total / maxTotal; });
-    bids.forEach((b) => { b.depth = b.total / maxTotal; });
-  }
-
-  return {
-    asks: [...asks].reverse(), // highest ask at top
-    bids,
-    spread: (asks[0]?.price ?? askBase) - (bids[0]?.price ?? bidBase),
-    spreadPct: (((asks[0]?.price ?? askBase) - (bids[0]?.price ?? bidBase)) / midPrice) * 100,
-  };
-}
 
 // ─────────────────────────────────────────────────────────
 // Live price tick — small random walk

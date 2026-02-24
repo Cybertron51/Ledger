@@ -56,6 +56,8 @@ interface ScanResult {
   confidence: number;
   condition: ConditionDetail;
   notes: string;
+  isFullSlabVisible: boolean;
+  rawImageUrl?: string;
 }
 
 // ─────────────────────────────────────────────────────────
@@ -111,6 +113,7 @@ export default function ScanPage() {
   const [result, setResult] = useState<ScanResult | null>(null);
   const [matchedSymbol, setMatchedSymbol] = useState<string | null>(null);
   const [cardImageUrl, setCardImageUrl] = useState<string | null>(null);
+  const [rawImageUrl, setRawImageUrl] = useState<string | null>(null);
   const [pricing, setPricing] = useState<CardPricing | null>(null);
 
   // UI state
@@ -202,16 +205,23 @@ export default function ScanPage() {
         canvas.getContext("2d")?.drawImage(img, 0, 0);
         setThumbDataUrl(makeThumb(canvas));
       };
-      img.src = dataUrl;
+      img.src = url;
     };
     reader.readAsDataURL(file);
   }
 
+  // ── Auto-analyze when image is ready ───────────────────
+  useEffect(() => {
+    if (stage === "capture" && imageBase64) {
+      analyzeCard();
+    }
+  }, [stage, imageBase64]);
+
   // ── Analyze card ───────────────────────────────────────
   async function analyzeCard() {
     if (!imageBase64) return;
-    setError(null);
     setStage("analyzing");
+    setError(null);
 
     try {
       const res = await fetch("/api/scan", {
@@ -221,20 +231,16 @@ export default function ScanPage() {
       });
 
       const data = await res.json();
-
-      if (!res.ok) {
-        setError(data.error ?? "Analysis failed");
-        setStage("capture");
-        return;
-      }
+      if (!res.ok) throw new Error(data.error || "Analysis failed");
 
       setResult(data.card);
-      setMatchedSymbol(data.matchedSymbol ?? null);
-      setCardImageUrl(data.imageUrl ?? null);
-      setPricing(data.pricing ?? null);
+      setMatchedSymbol(data.matchedSymbol);
+      setCardImageUrl(data.imageUrl);
+      setRawImageUrl(data.rawImageUrl);
+      setPricing(data.pricing);
       setStage("result");
-    } catch {
-      setError("Network error — please try again");
+    } catch (err: any) {
+      setError(err.message || "An error occurred");
       setStage("capture");
     }
   }
@@ -376,8 +382,6 @@ export default function ScanPage() {
             onDrop={(e) => { e.preventDefault(); setDragOver(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
             onRetake={() => { if (blobUrl) URL.revokeObjectURL(blobUrl); setBlobUrl(null); setImageBase64(null); setCameraError(null); }}
             onSwitchToUpload={() => { setCaptureTab("upload"); setCameraError(null); }}
-            onAnalyze={analyzeCard}
-            canAnalyze={!!imageBase64}
           />
         )}
 
@@ -392,6 +396,7 @@ export default function ScanPage() {
             result={result}
             thumbDataUrl={thumbDataUrl}
             cardImageUrl={cardImageUrl}
+            rawImageUrl={rawImageUrl}
             matchedSymbol={matchedSymbol}
             pricing={pricing}
             onAddToVault={addToVault}
@@ -428,8 +433,6 @@ interface CaptureStageProps {
   onDrop: (e: React.DragEvent) => void;
   onRetake: () => void;
   onSwitchToUpload: () => void;
-  onAnalyze: () => void;
-  canAnalyze: boolean;
 }
 
 function CaptureStage({
@@ -448,8 +451,6 @@ function CaptureStage({
   onDrop,
   onRetake,
   onSwitchToUpload,
-  onAnalyze,
-  canAnalyze,
 }: CaptureStageProps) {
   return (
     <>
@@ -467,7 +468,7 @@ function CaptureStage({
           Scan a Card
         </h1>
         <p style={{ fontSize: 13, color: colors.textMuted, marginTop: 4 }}>
-          Photograph your card — AI identifies it instantly
+          Include the PSA label in the photo — AI identifies it instantly
         </p>
       </div>
 
@@ -676,27 +677,6 @@ function CaptureStage({
           />
         </>
       )}
-
-      {/* Analyze button */}
-      <button
-        onClick={onAnalyze}
-        disabled={!canAnalyze}
-        style={{
-          width: "100%",
-          marginTop: 20,
-          padding: "14px 0",
-          borderRadius: 12,
-          fontSize: 15,
-          fontWeight: 700,
-          cursor: canAnalyze ? "pointer" : "not-allowed",
-          border: "none",
-          background: canAnalyze ? colors.green : colors.surface,
-          color: canAnalyze ? colors.textInverse : colors.textMuted,
-          transition: "all 0.15s",
-        }}
-      >
-        Analyze Card →
-      </button>
     </>
   );
 }
@@ -837,6 +817,7 @@ interface ResultStageProps {
   result: ScanResult;
   thumbDataUrl: string | null;
   cardImageUrl: string | null;
+  rawImageUrl: string | null;
   matchedSymbol: string | null;
   pricing: CardPricing | null;
   onAddToVault: () => void;
@@ -847,23 +828,26 @@ function ResultStage({
   result,
   thumbDataUrl,
   cardImageUrl,
+  rawImageUrl,
   matchedSymbol,
   pricing,
   onAddToVault,
   onScanAgain,
 }: ResultStageProps) {
-  // Prefer official database image; fall back to user's captured photo
-  const displayImage = cardImageUrl ?? thumbDataUrl;
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+
+  // Images to show in the carousel
+  // 1. Official DB image OR PSA image OR fallback thumbnail
+  // 2. The raw scan image that was uploaded to Supabase
+  const officialImage = cardImageUrl ?? thumbDataUrl;
+  const images = [officialImage];
+  if (rawImageUrl) {
+    images.push(rawImageUrl);
+  }
+
   const gc = gradeColor(result.estimatedGrade);
   const conf = confidenceLabel(result.confidence);
   const confPct = Math.round(result.confidence * 100);
-
-  const conditionItems: Array<{ label: string; value: string }> = [
-    { label: "Corners", value: result.condition?.corners ?? "unknown" },
-    { label: "Surfaces", value: result.condition?.surfaces ?? "unknown" },
-    { label: "Centering", value: result.condition?.centering ?? "unknown" },
-    { label: "Edges", value: result.condition?.edges ?? "unknown" },
-  ];
 
   return (
     <>
@@ -883,11 +867,17 @@ function ResultStage({
           background: colors.surface,
           borderRadius: 12,
           border: `1px solid ${colors.border}`,
+          position: "relative",
         }}
       >
-        {/* Card image — official DB image or captured photo fallback */}
-        {displayImage ? (
+        {/* Image Carousel */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
           <div
+            onClick={() => {
+              if (images.length > 1) {
+                setActiveImageIndex((prev) => (prev + 1) % images.length);
+              }
+            }}
             style={{
               width: 60,
               height: 84,
@@ -895,27 +885,37 @@ function ResultStage({
               overflow: "hidden",
               border: `1px solid ${colors.border}`,
               flexShrink: 0,
+              background: colors.surfaceOverlay,
+              cursor: images.length > 1 ? "pointer" : "default",
+              position: "relative",
             }}
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={displayImage}
-              alt={result.name}
-              style={{ width: "100%", height: "100%", objectFit: "cover" }}
-            />
+            {images[activeImageIndex] && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={images[activeImageIndex]!}
+                alt={result.name}
+                style={{ width: "100%", height: "100%", objectFit: "cover" }}
+              />
+            )}
           </div>
-        ) : (
-          <div
-            style={{
-              width: 60,
-              height: 84,
-              borderRadius: 6,
-              background: colors.surfaceOverlay,
-              border: `1px solid ${colors.border}`,
-              flexShrink: 0,
-            }}
-          />
-        )}
+          {/* Carousel dots */}
+          {images.length > 1 && (
+            <div style={{ display: "flex", gap: 4 }}>
+              {images.map((_, i) => (
+                <div
+                  key={i}
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "50%",
+                    background: i === activeImageIndex ? colors.textPrimary : colors.border,
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
 
         {/* Identity */}
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -943,7 +943,7 @@ function ResultStage({
               }}
             >
               <span style={{ fontSize: 11, fontWeight: 700, color: gc, letterSpacing: "0.04em" }}>
-                PSA {result.estimatedGrade} est.
+                PSA {result.estimatedGrade}
               </span>
             </div>
           </div>
@@ -953,13 +953,15 @@ function ResultStage({
             {result.cardNumber ? ` · #${result.cardNumber}` : ""}
           </p>
 
-          {/* Grade range */}
-          <p style={{ fontSize: 11, color: colors.textMuted, marginTop: 6 }}>
-            Grade range estimate:{" "}
-            <span style={{ color: gc, fontWeight: 600 }}>
-              {result.gradeRange?.[0]}–{result.gradeRange?.[1]}
-            </span>
-          </p>
+          {/* PSA Cert */}
+          {result.certNumber && (
+            <p style={{ fontSize: 11, color: colors.textMuted, marginTop: 6 }}>
+              Cert Number:{" "}
+              <span style={{ color: colors.textPrimary, fontWeight: 600 }}>
+                {result.certNumber}
+              </span>
+            </p>
+          )}
 
           {matchedSymbol && (
             <p style={{ fontSize: 11, color: colors.green, marginTop: 4, fontWeight: 600 }}>
@@ -969,44 +971,71 @@ function ResultStage({
         </div>
       </div>
 
-      {/* Condition grid */}
+      {/* Verification & Quality Check */}
       <div style={{ marginBottom: 16 }}>
         <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: colors.textMuted, marginBottom: 10 }}>
-          Condition Assessment
+          Authentication
         </p>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-          {conditionItems.map(({ label, value }) => (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr", gap: 8 }}>
+          <div
+            style={{
+              background: colors.surface,
+              border: `1px solid ${colors.border}`,
+              borderRadius: 10,
+              padding: "12px 14px",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
             <div
-              key={label}
               style={{
-                background: colors.surface,
-                border: `1px solid ${colors.border}`,
-                borderRadius: 10,
-                padding: "12px 14px",
-                display: "flex",
-                alignItems: "center",
-                gap: 10,
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: result.certNumber ? colors.green : colors.red,
+                flexShrink: 0,
               }}
-            >
-              <div
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: "50%",
-                  background: conditionDot(value),
-                  flexShrink: 0,
-                }}
-              />
-              <div style={{ minWidth: 0 }}>
-                <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: colors.textMuted, margin: 0 }}>
-                  {label}
-                </p>
-                <p style={{ fontSize: 12, fontWeight: 500, color: colors.textPrimary, margin: "2px 0 0", textTransform: "capitalize" }}>
-                  {value}
-                </p>
-              </div>
+            />
+            <div style={{ minWidth: 0 }}>
+              <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: colors.textMuted, margin: 0 }}>
+                Legitimacy
+              </p>
+              <p style={{ fontSize: 13, fontWeight: 600, color: result.certNumber ? colors.green : colors.red, margin: "2px 0 0" }}>
+                {result.certNumber ? "Verified PSA Slab" : "PSA Label Not Detected"}
+              </p>
             </div>
-          ))}
+          </div>
+
+          <div
+            style={{
+              background: colors.surface,
+              border: `1px solid ${colors.border}`,
+              borderRadius: 10,
+              padding: "12px 14px",
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+            }}
+          >
+            <div
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: "50%",
+                background: result.isFullSlabVisible ? colors.green : colors.red,
+                flexShrink: 0,
+              }}
+            />
+            <div style={{ minWidth: 0 }}>
+              <p style={{ fontSize: 10, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: colors.textMuted, margin: 0 }}>
+                Quality Check
+              </p>
+              <p style={{ fontSize: 13, fontWeight: 600, color: result.isFullSlabVisible ? colors.green : colors.red, margin: "2px 0 0" }}>
+                {result.isFullSlabVisible ? "Pass — Full Slab Visible" : "Fail — Full Slab Not Visible"}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1100,16 +1129,17 @@ function ResultStage({
       {/* Actions */}
       <button
         onClick={onAddToVault}
+        disabled={!result.certNumber || !result.isFullSlabVisible}
         style={{
           width: "100%",
           padding: "14px 0",
           borderRadius: 12,
           fontSize: 15,
           fontWeight: 700,
-          cursor: "pointer",
+          cursor: result.certNumber && result.isFullSlabVisible ? "pointer" : "not-allowed",
           border: "none",
-          background: colors.green,
-          color: colors.textInverse,
+          background: result.certNumber && result.isFullSlabVisible ? colors.green : colors.surfaceOverlay,
+          color: result.certNumber && result.isFullSlabVisible ? colors.textInverse : colors.textMuted,
           marginBottom: 12,
         }}
       >

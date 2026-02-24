@@ -17,7 +17,8 @@ export interface VaultHolding {
   status: "pending_authentication" | "shipped" | "received" | "authenticating" | "in_vault" | "tradable" | "in_transit" | "withdrawn" | "listed";
   dateDeposited: string; // ISO date string
   certNumber: string;    // mock PSA cert number
-  imageUrl: string;
+  imageUrl?: string;
+  rawImageUrl?: string;
   listingPrice?: number;
 }
 
