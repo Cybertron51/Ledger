@@ -227,6 +227,31 @@ CREATE TRIGGER trg_vh_updated_at
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
 
+-- ── Trades Ledger ─────────────────────────────────────────────
+-- Records each matched trade so the app can show history.
+
+CREATE TABLE IF NOT EXISTS trades (
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  holding_id   UUID        NOT NULL REFERENCES vault_holdings(id) ON DELETE CASCADE,
+  symbol       TEXT        NOT NULL,
+  buyer_id     UUID        NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  seller_id    UUID        NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  price        DECIMAL(14,2) NOT NULL,
+  executed_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_trades_symbol    ON trades(symbol);
+CREATE INDEX IF NOT EXISTS idx_trades_buyer_id  ON trades(buyer_id);
+CREATE INDEX IF NOT EXISTS idx_trades_seller_id ON trades(seller_id);
+
+-- RLS
+ALTER TABLE trades ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can read own trades" ON trades;
+CREATE POLICY "Users can read own trades"
+  ON trades FOR SELECT USING (auth.uid() = buyer_id OR auth.uid() = seller_id);
+
+
 -- ── Asset Transfer (RPC) ────────────────────────────────────
 -- Atomically exchanges cash for a vault_holding card.
 
@@ -240,6 +265,7 @@ DECLARE
   v_buyer_balance DECIMAL;
   v_holding_status TEXT;
   v_holding_owner UUID;
+  v_symbol TEXT;
 BEGIN
   -- 1. Ensure the buyer has enough balance
   SELECT cash_balance INTO v_buyer_balance FROM profiles WHERE id = p_buyer_id FOR UPDATE;
@@ -248,7 +274,7 @@ BEGIN
   END IF;
 
   -- 2. Ensure holding is actually listed & belongs to seller
-  SELECT status, user_id INTO v_holding_status, v_holding_owner 
+  SELECT status, user_id, symbol INTO v_holding_status, v_holding_owner, v_symbol
     FROM vault_holdings 
     WHERE id = p_holding_id FOR UPDATE;
 
@@ -273,6 +299,10 @@ BEGIN
         listing_price = NULL,
         acquisition_price = p_price
     WHERE id = p_holding_id;
+
+  -- 6. Record trade in ledger
+  INSERT INTO trades (holding_id, symbol, buyer_id, seller_id, price, executed_at)
+  VALUES (p_holding_id, v_symbol, p_buyer_id, p_seller_id, p_price, NOW());
 
   RETURN TRUE;
 END;

@@ -63,7 +63,10 @@ export default function DepositPage() {
       const res = await fetch("/api/deposit/payment-intent", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amountCents: Math.round(amt * 100) }),
+        body: JSON.stringify({
+          amountCents: Math.round(amt * 100),
+          userId: user?.id
+        }),
       });
       const data = await res.json();
       if (!res.ok) {

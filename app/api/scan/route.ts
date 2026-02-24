@@ -22,6 +22,7 @@ Return exactly this structure:
   "cardNumber": "4/102",
   "category": "pokemon",
   "estimatedGrade": 9,
+  "certNumber": "12345678",
   "gradeRange": [8, 9],
   "confidence": 0.91,
   "condition": {
@@ -36,6 +37,7 @@ Return exactly this structure:
 Valid values:
 - category: "pokemon" or "sports"
 - estimatedGrade: integer 1–10
+- certNumber: string of the PSA/BGS certification number if it is a graded slab, otherwise null
 - gradeRange: [low, high] pair
 - confidence: 0.0–1.0
 - corners: "sharp" | "slightly worn" | "worn" | "heavily worn"
@@ -44,6 +46,37 @@ Valid values:
 - edges: "clean" | "slightly worn" | "worn" | "heavily worn"
 
 If the image is unclear, return your best estimate with a low confidence value. Return ONLY the JSON.`;
+
+// ─────────────────────────────────────────────────────────
+// Google Cloud Vision OCR
+// ─────────────────────────────────────────────────────────
+
+async function detectTextWithGoogleVision(base64Image: string): Promise<string | null> {
+  const apiKey = process.env.GOOGLE_CLOUD_VISION_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const url = `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        requests: [
+          {
+            image: { content: base64Image },
+            features: [{ type: "TEXT_DETECTION" }],
+          },
+        ],
+      }),
+    });
+
+    const data = await response.json();
+    return data.responses?.[0]?.fullTextAnnotation?.text || null;
+  } catch (err) {
+    console.error("Google Vision API error:", err);
+    return null;
+  }
+}
 
 // ─────────────────────────────────────────────────────────
 // Card image lookup
@@ -84,8 +117,8 @@ async function lookupPokemonImage(card: CardData): Promise<string | null> {
   // Build query: search by name, optionally narrow by card number
   const number = card.cardNumber?.replace(/\/.+$/, "").trim(); // "4" from "4/102"
   const q = number
-    ? `name:"${name}" number:${number}`
-    : `name:"${name}"`;
+    ? `name: "${name}" number:${number} `
+    : `name: "${name}"`;
 
   const headers: HeadersInit = { "Content-Type": "application/json" };
   if (process.env.POKEMON_TCG_API_KEY) {
@@ -305,8 +338,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const ocrText = await detectTextWithGoogleVision(imageBase64);
+    const finalPrompt = ocrText
+      ? `${PROMPT}\n\nHere is the raw text extracted from the image via OCR to help you identify the certification number, card name, and grade accurately:\n<ocr_text>\n${ocrText}\n</ocr_text>`
+      : PROMPT;
+
     const message = await client.messages.create({
-      model: "claude-sonnet-4-6",
+      model: "claude-3-5-sonnet-latest",
       max_tokens: 1024,
       messages: [
         {
@@ -322,7 +360,7 @@ export async function POST(req: NextRequest) {
             },
             {
               type: "text",
-              text: PROMPT,
+              text: finalPrompt,
             },
           ],
         },

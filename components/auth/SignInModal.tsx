@@ -7,8 +7,8 @@
  */
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { X, Loader2 } from "lucide-react";
-import { useAuth } from "@/lib/auth";
 import { colors } from "@/lib/theme";
 import { supabase } from "@/lib/supabase";
 
@@ -23,7 +23,7 @@ export function SignInModal({ onClose }: SignInModalProps) {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  const { signIn } = useAuth(); // If we still need to trigger local state updates immediately, though the context now listens to Supabase automatically
+  const router = useRouter();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -39,12 +39,13 @@ export function SignInModal({ onClose }: SignInModalProps) {
           options: { data: { name: email.split("@")[0] } }
         });
         if (error) throw error;
-        // Auto sign in or show success (often signUp auto signs in if email confirm is false)
         onClose();
+        router.refresh();
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         onClose();
+        router.refresh();
       }
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to authenticate.");

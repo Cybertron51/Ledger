@@ -20,6 +20,7 @@ import type { VaultHolding } from "@/lib/vault-data";
 import type { AssetData, PricePoint } from "@/lib/market-data";
 import { generateOrderBook } from "@/lib/market-data";
 import { usePortfolio } from "@/lib/portfolio-context";
+import { supabase } from "@/lib/supabase";
 
 // ─────────────────────────────────────────────────────────
 // Types
@@ -131,12 +132,20 @@ function TradeModal({
     if (!user) return;
     setStage("submitting");
     try {
+      const { data: { session } } = await supabase!.auth.getSession();
+      const token = session?.access_token;
+
+      if (!token) throw new Error("Missing auth token. Please sign in again.");
+
       const res = await fetch("/api/orders", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({
           userId: user.id,
-          tokenId: asset.tokenId,
+          symbol: asset.symbol,
           priceUsd: price,
           isBuy: side === "buy",
           quantity,
@@ -546,6 +555,14 @@ function MarketRow({
           >
             PSA {asset.grade}
           </span>
+          {!asset.hasLiquidity && (
+            <span
+              className="shrink-0 rounded-[4px] px-[4px] py-[2px] text-[8px] font-bold tracking-widest uppercase"
+              style={{ background: colors.surfaceRaised, color: colors.textMuted }}
+            >
+              Not Traded
+            </span>
+          )}
         </div>
         <p className="mt-[2px] text-[11px]" style={{ color: colors.textMuted }}>{asset.set}</p>
       </div>

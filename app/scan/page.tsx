@@ -51,6 +51,7 @@ interface ScanResult {
   cardNumber: string | null;
   category: string;
   estimatedGrade: number;
+  certNumber?: string;
   gradeRange: [number, number];
   confidence: number;
   condition: ConditionDetail;
@@ -286,7 +287,7 @@ export default function ScanPage() {
       acquisitionPrice: 0,
       status: "pending_authentication", // Initial state for escrow flow
       dateDeposited: new Date().toISOString().split("T")[0],
-      certNumber: "Pending grading",
+      certNumber: result.certNumber ?? "Pending grading",
       imageUrl: finalImageUrl,
     };
 

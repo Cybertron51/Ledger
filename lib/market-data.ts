@@ -23,6 +23,7 @@ export interface AssetData {
   high24h: number;
   low24h: number;
   category: "pokemon" | "sports";
+  hasLiquidity?: boolean; // True if there are active listings for this card
 }
 
 import type { DBCard } from "./db/cards";
@@ -41,6 +42,7 @@ export function mapDBCardToAssetData(c: DBCard): AssetData {
     high24h: c.high_24h ?? c.price,
     low24h: c.low_24h ?? c.price,
     category: c.category as "pokemon" | "sports",
+    hasLiquidity: false, // Will be populated by the frontend
   };
 }
 
@@ -101,32 +103,17 @@ export function generateHistory(
   range: TimeRange,
   symbol: string
 ): PricePoint[] {
-  const { bars, intervalMs } = RANGE_CONFIGS[range];
-  const rng = makeRng(symbolSeed(symbol + range));
+  // Temporary behavior: just generate a flat line at the current price
+  // until we wire up the real `price_history` database table.
   const now = Date.now();
-
-  // Starting point derived from current price and session change
-  const prevClose = price / (1 + changePct / 100);
-  let p = prevClose * (0.82 + rng() * 0.36);
-
+  const { bars, intervalMs } = RANGE_CONFIGS[range];
   const points: PricePoint[] = [];
 
   for (let i = 0; i < bars; i++) {
     const time = now - (bars - 1 - i) * intervalMs;
-    const progress = i / (bars - 1);
-
-    const volatility = 0.018;
-    const noise = p * volatility * (rng() - 0.5) * 2;
-    // Trend toward prevClose most of the chart, spike to current price in last ~15%
-    const target = progress > 0.85 ? price : prevClose;
-    const drift = (target - p) * 0.06;
-
-    p = Math.max(p + drift + noise, price * 0.35);
-    points.push({ time, price: parseFloat(p.toFixed(2)) });
+    points.push({ time, price });
   }
 
-  // Guarantee last point matches current price exactly
-  points[points.length - 1].price = price;
   return points;
 }
 
@@ -139,23 +126,16 @@ export function generateSparkline(
   changePct: number,
   symbol: string
 ): PricePoint[] {
-  const rng = makeRng(symbolSeed(symbol + "spark"));
-  const prevClose = price / (1 + changePct / 100);
-  let p = prevClose;
+  // Temporary behavior: just generate a flat line at the current price
+  // to remove hallucinatory noise.
   const now = Date.now();
-
   const points: PricePoint[] = [];
 
   for (let i = 0; i < 20; i++) {
     const time = now - (19 - i) * 60 * 60 * 1000;
-    const progress = i / 19;
-    const noise = p * 0.012 * (rng() - 0.5) * 2;
-    const drift = (price - p) * 0.12 * progress;
-    p = Math.max(p + drift + noise, price * 0.5);
-    points.push({ time, price: parseFloat(p.toFixed(2)) });
+    points.push({ time, price });
   }
 
-  points[points.length - 1].price = price;
   return points;
 }
 
@@ -221,21 +201,8 @@ export function generateOrderBook(midPrice: number, symbol: string, userAsks: Or
 // ─────────────────────────────────────────────────────────
 
 export function tickPrice(asset: AssetData): AssetData {
-  const volatility = 0.003;
-  const delta = asset.price * volatility * (Math.random() - 0.5) * 2;
-  const newPrice = Math.max(asset.price + delta, asset.price * 0.5);
-  const openPrice = asset.price / (1 + asset.changePct / 100);
-  const newChange = newPrice - openPrice;
-  const newChangePct = (newChange / openPrice) * 100;
-
-  return {
-    ...asset,
-    price: parseFloat(newPrice.toFixed(2)),
-    change: parseFloat(newChange.toFixed(2)),
-    changePct: parseFloat(newChangePct.toFixed(3)),
-    high24h: Math.max(asset.high24h, newPrice),
-    low24h: Math.min(asset.low24h, newPrice),
-  };
+  // Disable random ticks to keep the market stable and non-hallucinatory
+  return asset;
 }
 
 

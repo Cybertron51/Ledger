@@ -52,15 +52,17 @@ SELECT id, 12800.00, -640.00, -4.76, 13500.00, 12500.00, 3 FROM cards WHERE symb
 INSERT INTO prices (card_id, price, change_24h, change_pct_24h, high_24h, low_24h, volume_24h)
 SELECT id, 8900.00, +1200.00, +15.58, 9200.00, 7500.00, 12 FROM cards WHERE symbol = 'WEM10-PRIZM-2023';
 
--- SEED AUTH USER & PROFILE
--- Pre-generate a known UUID for demo user
+-- SEED AUTH USERS & PROFILES
+-- Pre-generate known UUIDs for demo users
 DO $$ 
 DECLARE
   demo_uid UUID := '11111111-1111-1111-1111-111111111111';
+  alice_uid UUID := '22222222-2222-2222-2222-222222222222';
+  bob_uid UUID := '33333333-3333-3333-3333-333333333333';
 BEGIN
   -- Insert into auth.users (simulate a signed-up user)
   -- Password for this user: "demo123"
-  INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at)
+  INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token, recovery_token, email_change_token_new, email_change_token_current, email_change, phone, phone_change, phone_change_token)
   VALUES (
     demo_uid,
     '00000000-0000-0000-0000-000000000000',
@@ -72,20 +74,75 @@ BEGIN
     '{"provider":"email","providers":["email"]}',
     '{"name":"Demo User"}',
     NOW(),
-    NOW()
+    NOW(),
+    '',
+    '',
+    '',
+    '',
+    '',
+    NULL,
+    '',
+    ''
   ) ON CONFLICT DO NOTHING;
-  
-  -- The trigger public.handle_new_user() will automatically create the public.profiles row for this user.
-  
-  -- Update demo's balance just in case
-  UPDATE public.profiles SET cash_balance = 50000.00 WHERE id = demo_uid;
 
-  -- VAULT HOLDINGS
+  -- Collector Alice
+  INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token, recovery_token, email_change_token_new, email_change_token_current, email_change, phone, phone_change, phone_change_token)
+  VALUES (
+    alice_uid,
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
+    'alice@tash.com',
+    crypt('alice123', gen_salt('bf')),
+    NOW(),
+    '{"provider":"email","providers":["email"]}',
+    '{"name":"Alice Collector"}',
+    NOW(),
+    NOW(),
+    '',
+    '',
+    '',
+    '',
+    '',
+    NULL,
+    '',
+    ''
+  ) ON CONFLICT DO NOTHING;
+
+  -- Collector Bob
+  INSERT INTO auth.users (id, instance_id, aud, role, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, created_at, updated_at, confirmation_token, recovery_token, email_change_token_new, email_change_token_current, email_change, phone, phone_change, phone_change_token)
+  VALUES (
+    bob_uid,
+    '00000000-0000-0000-0000-000000000000',
+    'authenticated',
+    'authenticated',
+    'bob@tash.com',
+    crypt('bob123', gen_salt('bf')),
+    NOW(),
+    '{"provider":"email","providers":["email"]}',
+    '{"name":"Bob Trader"}',
+    NOW(),
+    NOW(),
+    '',
+    '',
+    '',
+    '',
+    '',
+    NULL,
+    '',
+    ''
+  ) ON CONFLICT DO NOTHING;
+
+  -- The trigger public.handle_new_user() will automatically create the public.profiles rows for these users.
+  
+  -- Update balances
+  UPDATE public.profiles SET cash_balance = 50000.00 WHERE id = demo_uid;
+  UPDATE public.profiles SET cash_balance = 35000.00 WHERE id = alice_uid;
+  UPDATE public.profiles SET cash_balance = 15000.00 WHERE id = bob_uid;
+
+  -- DEMO USER VAULT HOLDINGS
   INSERT INTO vault_holdings (user_id, card_id, symbol, status, acquisition_price, created_at, cert_number, image_url)
   SELECT demo_uid, id, symbol, 'tradable', 12400.00, '2024-03-15', 'PSA 47821930', '/cards/CHZ10-BASE-1999.svg' FROM cards WHERE symbol = 'CHZ10-BASE-1999';
-
-  INSERT INTO vault_holdings (user_id, card_id, symbol, status, acquisition_price, listing_price, created_at, cert_number, image_url)
-  SELECT demo_uid, id, symbol, 'listed', 3300.00, 3800.00, '2024-05-02', 'PSA 52104773', '/cards/BLS10-BASE-1999.svg' FROM cards WHERE symbol = 'BLS10-BASE-1999';
 
   INSERT INTO vault_holdings (user_id, card_id, symbol, status, acquisition_price, created_at, cert_number, image_url)
   SELECT demo_uid, id, symbol, 'tradable', 4900.00, '2024-01-28', 'PSA 38847201', '/cards/LBJ10-TOP-2003.svg' FROM cards WHERE symbol = 'LBJ10-TOP-2003';
@@ -98,4 +155,15 @@ BEGIN
 
   INSERT INTO vault_holdings (user_id, card_id, symbol, status, acquisition_price, created_at, cert_number, image_url)
   SELECT demo_uid, id, symbol, 'tradable', 11100.00, '2024-02-07', 'PSA 49230561', '/cards/UMB10-POP-2005.svg' FROM cards WHERE symbol = 'UMB10-POP-2005';
+
+  -- ALICE VAULT HOLDINGS (PRIMARY MARKET MAKER)
+  INSERT INTO vault_holdings (user_id, card_id, symbol, status, acquisition_price, listing_price, created_at, cert_number, image_url)
+  SELECT alice_uid, id, symbol, 'listed', 3200.00, 3800.00, '2024-05-02', 'PSA 52104773', '/cards/BLS10-BASE-1999.svg' FROM cards WHERE symbol = 'BLS10-BASE-1999';
+
+  INSERT INTO vault_holdings (user_id, card_id, symbol, status, acquisition_price, listing_price, created_at, cert_number, image_url)
+  SELECT alice_uid, id, symbol, 'listed', 5400.00, 5650.00, '2024-04-10', 'PSA 38840001', '/cards/LBJ10-TOP-2003.svg' FROM cards WHERE symbol = 'LBJ10-TOP-2003';
+
+  -- BOB VAULT HOLDINGS (ADDITIONAL LIQUIDITY)
+  INSERT INTO vault_holdings (user_id, card_id, symbol, status, acquisition_price, listing_price, created_at, cert_number, image_url)
+  SELECT bob_uid, id, symbol, 'listed', 3600.00, 3800.00, '2024-06-21', 'PSA 60000001', '/cards/BLS10-BASE-1999.svg' FROM cards WHERE symbol = 'BLS10-BASE-1999';
 END $$;

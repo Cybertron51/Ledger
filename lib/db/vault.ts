@@ -110,3 +110,27 @@ export async function updateVaultHoldingStatus(
 
     return data;
 }
+
+/**
+ * Fetch a fast map of symbols to their number of active listings.
+ * Used to flag cards that have no liquidity ("NOT TRADED").
+ */
+export async function getActiveListingCounts(): Promise<Record<string, number>> {
+    if (!supabase) return {};
+
+    const { data, error } = await supabase
+        .from("vault_holdings")
+        .select("symbol")
+        .eq("status", "listed");
+
+    if (error || !data) {
+        console.error("[db/vault] Error fetching active listings:", error);
+        return {};
+    }
+
+    const counts: Record<string, number> = {};
+    for (const row of data) {
+        counts[row.symbol] = (counts[row.symbol] || 0) + 1;
+    }
+    return counts;
+}

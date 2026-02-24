@@ -25,6 +25,7 @@ export interface User {
 
 interface AuthContextValue {
   user: User | null;
+  session: any | null;
   isAuthenticated: boolean;
   signIn: () => void;
   signOut: () => void;
@@ -43,11 +44,14 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const [session, setSession] = useState<any>(null);
 
   useEffect(() => {
     if (!supabase) return;
 
     async function fetchProfile(userId: string, email: string) {
+      if (!supabase) return;
       const { data, error } = await supabase
         .from("profiles")
         .select("name, cash_balance")
@@ -70,15 +74,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     // Check active session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) {
-        fetchProfile(session.user.id, session.user.email!);
+    supabase.auth.getSession().then(({ data: { session: initSession } }) => {
+      setSession(initSession);
+      if (initSession?.user) {
+        fetchProfile(initSession.user.id, initSession.user.email!);
       }
     });
 
-    const { data: { subscription } } = supabase!.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_IN" && session?.user) {
-        fetchProfile(session.user.id, session.user.email!);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
+      setSession(newSession);
+      if (event === "SIGNED_IN" && newSession?.user) {
+        fetchProfile(newSession.user.id, newSession.user.email!);
       } else if (event === "SIGNED_OUT") {
         setUser(null);
       }
@@ -104,7 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, isAuthenticated: !!user, signIn, signOut, updateBalance }}
+      value={{ user, session, isAuthenticated: !!user, signIn, signOut, updateBalance }}
     >
       {children}
     </AuthContext.Provider>

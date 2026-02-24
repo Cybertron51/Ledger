@@ -99,10 +99,20 @@ export default function MarketPage() {
     async function fetchAssets() {
       setIsLoading(true);
       const { getMarketCards } = await import("@/lib/db/cards");
+      const { getActiveListingCounts } = await import("@/lib/db/vault");
       const { mapDBCardToAssetData } = await import("@/lib/market-data");
-      const dbCards = await getMarketCards();
+
+      const [dbCards, activeCounts] = await Promise.all([
+        getMarketCards(),
+        getActiveListingCounts()
+      ]);
+
       if (dbCards && dbCards.length > 0) {
-        const newAssets = dbCards.map(mapDBCardToAssetData);
+        const newAssets = dbCards.map(c => {
+          const asset = mapDBCardToAssetData(c);
+          asset.hasLiquidity = (activeCounts[asset.symbol] || 0) > 0;
+          return asset;
+        });
         setAssets(newAssets);
         setSelectedSymbol((prev) =>
           newAssets.some(a => a.symbol === prev) ? prev : newAssets[0].symbol
@@ -263,9 +273,19 @@ export default function MarketPage() {
                   <p className="truncate text-[12px] font-semibold leading-snug" style={{ color: colors.textPrimary }}>
                     {asset.name}
                   </p>
-                  <p className="mt-[1px] text-[10px] uppercase tracking-wider" style={{ color: colors.textMuted }}>
-                    PSA {asset.grade}
-                  </p>
+                  <div className="mt-[2px] flex items-center gap-[6px]">
+                    <span className="text-[10px] uppercase tracking-wider" style={{ color: colors.textMuted }}>
+                      PSA {asset.grade}
+                    </span>
+                    {!asset.hasLiquidity && (
+                      <span
+                        className="rounded-[4px] px-[4px] py-[1px] text-[8px] font-bold tracking-widest uppercase"
+                        style={{ background: colors.surfaceRaised, color: colors.textMuted }}
+                      >
+                        Not Traded
+                      </span>
+                    )}
+                  </div>
                 </div>
                 <SparklineChart data={sparklines[asset.symbol] ?? []} isUp={assetUp} width={56} height={26} />
               </div>

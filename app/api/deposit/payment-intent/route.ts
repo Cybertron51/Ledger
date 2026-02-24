@@ -16,7 +16,7 @@ const MAX_CENTS = 1_000_000; // $10,000.00
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { amountCents } = body;
+    const { amountCents, userId } = body;
 
     if (
       typeof amountCents !== "number" ||
@@ -35,6 +35,9 @@ export async function POST(req: NextRequest) {
         amount: amountCents,
         currency: "usd",
         payment_method_types: ["card"],
+        metadata: {
+          userId: userId || "",
+        }
       },
       { stripeAccount }
     );

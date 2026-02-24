@@ -6,12 +6,15 @@ import { colors } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { usePortfolio } from "@/lib/portfolio-context";
+import { supabase } from "@/lib/supabase";
 import type { AssetData } from "@/lib/market-data";
 
 interface TradePanelProps {
   asset: AssetData;
   onRequestSignIn?: () => void;
 }
+
+// FORCE REFRESH v2
 
 type Stage = "form" | "review" | "submitting" | "confirmed" | "error";
 
@@ -69,9 +72,17 @@ export function TradePanel({ asset, onRequestSignIn }: TradePanelProps) {
     setErrorMsg("");
 
     try {
+      const { data: { session } } = await supabase!.auth.getSession();
+      const token = session?.access_token;
+
+      if (!token) throw new Error("Missing auth token. Please sign in again.");
+
       const res = await fetch("/api/orders", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
         body: JSON.stringify({
           userId: user.id,
           symbol: asset.symbol,
@@ -85,7 +96,7 @@ export function TradePanel({ asset, onRequestSignIn }: TradePanelProps) {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.error ?? "Order failed");
+        throw new Error(JSON.stringify(data, null, 2));
       }
 
       // Update local USD balance optimistically
