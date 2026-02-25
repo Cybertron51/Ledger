@@ -25,8 +25,9 @@ import { formatCurrency } from "@/lib/utils";
 import { type VaultHolding } from "@/lib/vault-data";
 import { type CardPricing } from "@/app/api/scan/route";
 import { insertVaultHolding } from "@/lib/db/vault";
-import { supabase } from "@/lib/supabase";
+
 import { useAuth } from "@/lib/auth";
+import { SignInModal } from "@/components/auth/SignInModal";
 import { usePortfolio } from "@/lib/portfolio-context";
 import { v4 as uuidv4 } from "uuid";
 
@@ -126,8 +127,9 @@ export default function ScanPage() {
   const [globalError, setGlobalError] = useState<string | null>(null);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [showSignIn, setShowSignIn] = useState(false);
 
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const { holdings, addHolding } = usePortfolio();
 
   // Refs
@@ -344,7 +346,7 @@ export default function ScanPage() {
 
       try {
         // 1. Save to Supabase DB using our helper
-        await insertVaultHolding(user.id, newHolding);
+        await insertVaultHolding(newHolding);
 
         // 2. Update local context immediately
         addHolding(newHolding);
@@ -392,6 +394,32 @@ export default function ScanPage() {
     maxWidth: 480,
     padding: "0 16px 40px",
   };
+
+  if (!isAuthenticated) {
+    return (
+      <div style={pageStyle}>
+        <div
+          className="flex flex-col items-center justify-center gap-4"
+          style={{ minHeight: `calc(100dvh - ${layout.chromeHeight})`, width: "100%" }}
+        >
+          <div style={{ padding: 32, borderRadius: 16, border: `1px solid ${colors.border}`, background: colors.surface, textAlign: "center", maxWidth: 400 }}>
+            <h2 style={{ color: colors.textPrimary, fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Sign In Required</h2>
+            <p style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 24 }}>You must be logged in to scan and upload cards.</p>
+            <button
+              onClick={() => setShowSignIn(true)}
+              style={{ width: "100%", background: colors.green, color: colors.background, padding: "12px 16px", borderRadius: 10, fontSize: 13, fontWeight: 700, border: "none", cursor: "pointer", transition: "transform 0.15s" }}
+              onMouseDown={(e) => e.currentTarget.style.transform = "scale(0.98)"}
+              onMouseUp={(e) => e.currentTarget.style.transform = "scale(1)"}
+              onMouseLeave={(e) => e.currentTarget.style.transform = "scale(1)"}
+            >
+              Sign In / Sign Up
+            </button>
+          </div>
+          {showSignIn && <SignInModal onClose={() => setShowSignIn(false)} />}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={pageStyle}>

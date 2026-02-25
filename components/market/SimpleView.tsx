@@ -20,7 +20,7 @@ import type { VaultHolding } from "@/lib/vault-data";
 import type { AssetData, PricePoint } from "@/lib/market-data";
 
 import { usePortfolio } from "@/lib/portfolio-context";
-import { supabase } from "@/lib/supabase";
+import { api } from "@/lib/api";
 
 // ─────────────────────────────────────────────────────────
 // Types
@@ -137,17 +137,8 @@ function TradeModal({
     if (!user) return;
     setStage("submitting");
     try {
-      const { data: { session } } = await supabase!.auth.getSession();
-      const token = session?.access_token;
-
-      if (!token) throw new Error("Missing auth token. Please sign in again.");
-
-      const res = await fetch("/api/orders", {
+      const res = await api("/api/orders", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
         body: JSON.stringify({
           userId: user.id,
           symbol: asset.symbol,

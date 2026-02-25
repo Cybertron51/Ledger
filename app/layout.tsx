@@ -13,6 +13,8 @@
  *  └──────────────────────────────────────────┘
  */
 
+export const dynamic = "force-dynamic";
+
 import type { Metadata } from "next";
 import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
@@ -23,7 +25,7 @@ import { Navigation } from "@/components/layout/Navigation";
 import { Providers } from "@/components/providers/Providers";
 
 import { layout } from "@/lib/theme";
-import { getMarketCards } from "@/lib/db/cards";
+import { supabaseAdmin } from "@/lib/supabase-admin";
 import { mapDBCardToAssetData } from "@/lib/market-data";
 
 // ─────────────────────────────────────────────────────────
@@ -61,10 +63,30 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const dbCards = await getMarketCards({ limit: 12 });
-  const tickerItems = dbCards && dbCards.length > 0
-    ? dbCards.map(mapDBCardToAssetData)
-    : [];
+  let tickerItems: ReturnType<typeof mapDBCardToAssetData>[] = [];
+
+  if (supabaseAdmin) {
+    const { data: dbCards } = await supabaseAdmin
+      .from("cards")
+      .select("*, prices(*)")
+      .limit(12);
+
+    if (dbCards && dbCards.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      tickerItems = dbCards.map((c: any) => {
+        const p = Array.isArray(c.prices) ? c.prices[0] : c.prices;
+        return mapDBCardToAssetData({
+          ...c,
+          price: p?.price ?? 0,
+          change_24h: p?.change_24h ?? 0,
+          change_pct_24h: p?.change_pct_24h ?? 0,
+          high_24h: p?.high_24h ?? null,
+          low_24h: p?.low_24h ?? null,
+          volume_24h: p?.volume_24h ?? 0,
+        });
+      });
+    }
+  }
 
   return (
     <html

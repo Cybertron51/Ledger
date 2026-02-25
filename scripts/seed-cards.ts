@@ -10,7 +10,7 @@
  * Prerequisites:
  *   1. Supabase project created at supabase.com
  *   2. Schema applied: run supabase/schema.sql in the SQL editor
- *   3. .env.local contains NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY
+ *   3. .env contains NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY
  *
  * Note: Uses SUPABASE_SERVICE_ROLE_KEY (not the anon key) to bypass RLS for writes.
  *       Never expose this key to the browser.
@@ -21,8 +21,8 @@ import * as dotenv from "dotenv";
 import * as path from "path";
 import * as fs from "fs";
 
-// ── Load .env.local ──────────────────────────────────────────
-const envPath = path.resolve(process.cwd(), ".env.local");
+// ── Load .env ──────────────────────────────────────────
+const envPath = path.resolve(process.cwd(), ".env");
 if (fs.existsSync(envPath)) {
   dotenv.config({ path: envPath });
 } else {
@@ -35,7 +35,7 @@ const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
   console.error(
     "\n❌  Missing env vars.\n" +
-    "    Add to .env.local:\n" +
+    "    Add to .env:\n" +
     "      NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co\n" +
     "      SUPABASE_SERVICE_ROLE_KEY=eyJ...\n" +
     "    (Service role key is in Supabase → Settings → API)\n"
@@ -52,19 +52,19 @@ const API_KEY = process.env.POKEMON_TCG_API_KEY; // optional
 // ─────────────────────────────────────────────────────────────
 
 const TARGET_SETS: Array<{ id: string; name: string; year: number }> = [
-  { id: "base1",       name: "Base Set",            year: 1999 },
-  { id: "jungle",      name: "Jungle",               year: 1999 },
-  { id: "fossil",      name: "Fossil",               year: 1999 },
-  { id: "base2",       name: "Base Set 2",           year: 2000 },
-  { id: "teamrocket",  name: "Team Rocket",          year: 2000 },
-  { id: "gym1",        name: "Gym Heroes",           year: 2000 },
-  { id: "gym2",        name: "Gym Challenge",        year: 2000 },
-  { id: "neo1",        name: "Neo Genesis",          year: 2000 },
-  { id: "neo2",        name: "Neo Discovery",        year: 2001 },
-  { id: "neo3",        name: "Neo Revelation",       year: 2001 },
-  { id: "neo4",        name: "Neo Destiny",          year: 2002 },
-  { id: "ecard1",      name: "Expedition Base Set",  year: 2002 },
-  { id: "basep",       name: "WotC Black Star Promos", year: 1999 },
+  { id: "base1", name: "Base Set", year: 1999 },
+  { id: "jungle", name: "Jungle", year: 1999 },
+  { id: "fossil", name: "Fossil", year: 1999 },
+  { id: "base2", name: "Base Set 2", year: 2000 },
+  { id: "teamrocket", name: "Team Rocket", year: 2000 },
+  { id: "gym1", name: "Gym Heroes", year: 2000 },
+  { id: "gym2", name: "Gym Challenge", year: 2000 },
+  { id: "neo1", name: "Neo Genesis", year: 2000 },
+  { id: "neo2", name: "Neo Discovery", year: 2001 },
+  { id: "neo3", name: "Neo Revelation", year: 2001 },
+  { id: "neo4", name: "Neo Destiny", year: 2002 },
+  { id: "ecard1", name: "Expedition Base Set", year: 2002 },
+  { id: "basep", name: "WotC Black Star Promos", year: 1999 },
 ];
 
 // Rarities to include (anything below this is too common to PSA)
@@ -92,100 +92,100 @@ const INCLUDE_RARITIES = new Set([
 
 const MARQUEE_PRICES: Record<string, number> = {
   // Base Set
-  "base1-4":   14_500,   // Charizard Holo
-  "base1-2":    3_800,   // Blastoise Holo
-  "base1-15":   2_200,   // Venusaur Holo
-  "base1-5":      580,   // Clefairy Holo
-  "base1-6":      420,   // Gyarados Holo
-  "base1-9":      280,   // Magneton Holo
-  "base1-10":     320,   // Mewtwo Holo
-  "base1-11":     260,   // Nidoking Holo
-  "base1-12":     300,   // Ninetales Holo
-  "base1-13":     240,   // Poliwrath Holo
-  "base1-14":     450,   // Raichu Holo
-  "base1-16":     560,   // Zapdos Holo
+  "base1-4": 14_500,   // Charizard Holo
+  "base1-2": 3_800,   // Blastoise Holo
+  "base1-15": 2_200,   // Venusaur Holo
+  "base1-5": 580,   // Clefairy Holo
+  "base1-6": 420,   // Gyarados Holo
+  "base1-9": 280,   // Magneton Holo
+  "base1-10": 320,   // Mewtwo Holo
+  "base1-11": 260,   // Nidoking Holo
+  "base1-12": 300,   // Ninetales Holo
+  "base1-13": 240,   // Poliwrath Holo
+  "base1-14": 450,   // Raichu Holo
+  "base1-16": 560,   // Zapdos Holo
 
   // Jungle
-  "jungle-1":     380,   // Clefable Holo
-  "jungle-2":     320,   // Electrode Holo
-  "jungle-3":     420,   // Flareon Holo
-  "jungle-4":     260,   // Jolteon Holo
-  "jungle-5":     340,   // Kangaskhan Holo
-  "jungle-6":     290,   // Mr. Mime Holo
-  "jungle-7":     260,   // Nidoqueen Holo
-  "jungle-8":     220,   // Pidgeot Holo
-  "jungle-9":     480,   // Pinsir Holo
-  "jungle-10":    310,   // Scyther Holo
-  "jungle-11":    260,   // Snorlax Holo
-  "jungle-12":    580,   // Vaporeon Holo
-  "jungle-13":    240,   // Venomoth Holo
-  "jungle-14":    220,   // Victreebel Holo
-  "jungle-15":    200,   // Vileplume Holo
-  "jungle-16":    220,   // Wigglytuff Holo
+  "jungle-1": 380,   // Clefable Holo
+  "jungle-2": 320,   // Electrode Holo
+  "jungle-3": 420,   // Flareon Holo
+  "jungle-4": 260,   // Jolteon Holo
+  "jungle-5": 340,   // Kangaskhan Holo
+  "jungle-6": 290,   // Mr. Mime Holo
+  "jungle-7": 260,   // Nidoqueen Holo
+  "jungle-8": 220,   // Pidgeot Holo
+  "jungle-9": 480,   // Pinsir Holo
+  "jungle-10": 310,   // Scyther Holo
+  "jungle-11": 260,   // Snorlax Holo
+  "jungle-12": 580,   // Vaporeon Holo
+  "jungle-13": 240,   // Venomoth Holo
+  "jungle-14": 220,   // Victreebel Holo
+  "jungle-15": 200,   // Vileplume Holo
+  "jungle-16": 220,   // Wigglytuff Holo
 
   // Fossil
-  "fossil-1":     380,   // Aerodactyl Holo
-  "fossil-2":     220,   // Ditto Holo
-  "fossil-3":     280,   // Dragonite Holo
-  "fossil-4":     580,   // Gengar Holo
-  "fossil-5":     240,   // Haunter Holo
-  "fossil-6":     420,   // Hitmonlee Holo
-  "fossil-7":     360,   // Hypno Holo
-  "fossil-8":     480,   // Kabutops Holo
-  "fossil-9":     320,   // Lapras Holo
-  "fossil-10":    260,   // Magneton Holo
-  "fossil-11":    220,   // Moltres Holo
-  "fossil-12":    380,   // Muk Holo
-  "fossil-13":    560,   // Raichu Holo
-  "fossil-14":    680,   // Slowbro Holo
-  "fossil-15":    340,   // Articuno Holo
-  "fossil-16":    420,   // Zapdos Holo
+  "fossil-1": 380,   // Aerodactyl Holo
+  "fossil-2": 220,   // Ditto Holo
+  "fossil-3": 280,   // Dragonite Holo
+  "fossil-4": 580,   // Gengar Holo
+  "fossil-5": 240,   // Haunter Holo
+  "fossil-6": 420,   // Hitmonlee Holo
+  "fossil-7": 360,   // Hypno Holo
+  "fossil-8": 480,   // Kabutops Holo
+  "fossil-9": 320,   // Lapras Holo
+  "fossil-10": 260,   // Magneton Holo
+  "fossil-11": 220,   // Moltres Holo
+  "fossil-12": 380,   // Muk Holo
+  "fossil-13": 560,   // Raichu Holo
+  "fossil-14": 680,   // Slowbro Holo
+  "fossil-15": 340,   // Articuno Holo
+  "fossil-16": 420,   // Zapdos Holo
 
   // Team Rocket
-  "teamrocket-1":  520,  // Dark Blastoise Holo
-  "teamrocket-2":  480,  // Dark Dragonite Holo
-  "teamrocket-3":  800,  // Dark Charizard Holo (non-holo version is more iconic but holo is rarer)
-  "teamrocket-4":  360,  // Dark Dugtrio Holo
-  "teamrocket-5":  280,  // Dark Golbat Holo
-  "teamrocket-6":  300,  // Dark Gyarados Holo
-  "teamrocket-7":  260,  // Dark Hypno Holo
-  "teamrocket-8":  420,  // Dark Machamp Holo
-  "teamrocket-9":  380,  // Dark Magneton Holo
+  "teamrocket-1": 520,  // Dark Blastoise Holo
+  "teamrocket-2": 480,  // Dark Dragonite Holo
+  "teamrocket-3": 800,  // Dark Charizard Holo (non-holo version is more iconic but holo is rarer)
+  "teamrocket-4": 360,  // Dark Dugtrio Holo
+  "teamrocket-5": 280,  // Dark Golbat Holo
+  "teamrocket-6": 300,  // Dark Gyarados Holo
+  "teamrocket-7": 260,  // Dark Hypno Holo
+  "teamrocket-8": 420,  // Dark Machamp Holo
+  "teamrocket-9": 380,  // Dark Magneton Holo
   "teamrocket-10": 340,  // Dark Slowbro Holo
   "teamrocket-11": 460,  // Dark Vileplume Holo
   "teamrocket-12": 3_200, // Dark Raichu Holo (extremely rare)
 
   // Neo Genesis
-  "neo1-2":  4_800,  // Lugia Holo
-  "neo1-4":    480,  // Feraligatr Holo
-  "neo1-6":    420,  // Meganium Holo
-  "neo1-10":   360,  // Typhlosion Holo
-  "neo1-16":   280,  // Pichu Holo
-  "neo1-1":    520,  // Ampharos Holo
-  "neo1-3":    380,  // Cleffa Holo
+  "neo1-2": 4_800,  // Lugia Holo
+  "neo1-4": 480,  // Feraligatr Holo
+  "neo1-6": 420,  // Meganium Holo
+  "neo1-10": 360,  // Typhlosion Holo
+  "neo1-16": 280,  // Pichu Holo
+  "neo1-1": 520,  // Ampharos Holo
+  "neo1-3": 380,  // Cleffa Holo
 
   // Neo Revelation
-  "neo3-10":  12_800,  // Umbreon Holo
-  "neo3-18":  38_000,  // Ho-Oh Holo
-  "neo3-1":      480,  // Ampharos Holo
-  "neo3-2":      520,  // Blissey Holo
-  "neo3-3":      380,  // Celebi Holo
-  "neo3-7":      420,  // Magcargo Holo
-  "neo3-8":    2_400,  // Espeon Holo
+  "neo3-10": 12_800,  // Umbreon Holo
+  "neo3-18": 38_000,  // Ho-Oh Holo
+  "neo3-1": 480,  // Ampharos Holo
+  "neo3-2": 520,  // Blissey Holo
+  "neo3-3": 380,  // Celebi Holo
+  "neo3-7": 420,  // Magcargo Holo
+  "neo3-8": 2_400,  // Espeon Holo
 
   // Neo Destiny
   "neo4-109": 22_000,  // Shining Charizard
-  "neo4-106":  8_500,  // Shining Magikarp
+  "neo4-106": 8_500,  // Shining Magikarp
   "neo4-111": 12_000,  // Shining Mewtwo
-  "neo4-110":  7_200,  // Shining Raichu
-  "neo4-113":  6_800,  // Shining Tyranitar
-  "neo4-112":  9_400,  // Shining Steelix
+  "neo4-110": 7_200,  // Shining Raichu
+  "neo4-113": 6_800,  // Shining Tyranitar
+  "neo4-112": 9_400,  // Shining Steelix
   "neo4-107": 11_000,  // Shining Gyarados
 
   // Promos
-  "basep-1":    680,   // Pikachu
-  "basep-4":    420,   // Pikachu (surf)
-  "basep-9":  1_200,   // Mew
+  "basep-1": 680,   // Pikachu
+  "basep-4": 420,   // Pikachu (surf)
+  "basep-9": 1_200,   // Mew
 };
 
 // ─────────────────────────────────────────────────────────────
@@ -218,15 +218,15 @@ function estimatePrice(pokemonCardId: string, rarity: string, year: number): num
   }
 
   const rarityBase: Record<string, number> = {
-    "Rare Holo":         180,
-    "Rare Secret":       600,
-    "Rare Ultra":        400,
-    "Rare Rainbow":      350,
-    "Amazing Rare":      250,
-    "Rare Shiny":        800,
-    "Rare Shiny GX":    1200,
-    "Shining":          3000,
-    "Promo":             120,
+    "Rare Holo": 180,
+    "Rare Secret": 600,
+    "Rare Ultra": 400,
+    "Rare Rainbow": 350,
+    "Amazing Rare": 250,
+    "Rare Shiny": 800,
+    "Rare Shiny GX": 1200,
+    "Shining": 3000,
+    "Promo": 120,
   };
 
   const base = rarityBase[rarity] ?? 100;
@@ -247,12 +247,12 @@ function priceStats(price: number) {
   const up = Math.random() > 0.45;
   const change = up ? swing : -swing;
   return {
-    price:           parseFloat(price.toFixed(2)),
-    change_24h:      parseFloat(change.toFixed(2)),
-    change_pct_24h:  parseFloat(((change / price) * 100).toFixed(3)),
-    high_24h:        parseFloat((price * (1 + Math.random() * 0.04)).toFixed(2)),
-    low_24h:         parseFloat((price * (1 - Math.random() * 0.04)).toFixed(2)),
-    volume_24h:      Math.max(1, Math.floor(Math.random() * 8)),
+    price: parseFloat(price.toFixed(2)),
+    change_24h: parseFloat(change.toFixed(2)),
+    change_pct_24h: parseFloat(((change / price) * 100).toFixed(3)),
+    high_24h: parseFloat((price * (1 + Math.random() * 0.04)).toFixed(2)),
+    low_24h: parseFloat((price * (1 - Math.random() * 0.04)).toFixed(2)),
+    volume_24h: Math.max(1, Math.floor(Math.random() * 8)),
   };
 }
 
@@ -378,21 +378,21 @@ async function seed() {
 
         const cardRow = {
           symbol,
-          name:            card.name,
-          category:        "pokemon" as const,
-          set_name:        targetSet.name,
-          set_id:          targetSet.id,
-          year:            targetSet.year,
-          rarity:          rarity,
-          artist:          card.artist ?? null,
-          hp:              card.hp ? parseInt(card.hp, 10) : null,
-          card_types:      card.types ?? null,
-          card_number:     card.number ?? null,
-          psa_grade:       grade,
-          population:      grade === 10 ? Math.floor(Math.random() * 200 + 10)
-                                        : Math.floor(Math.random() * 800 + 50),
-          image_url:       card.images.small,
-          image_url_hi:    card.images.large,
+          name: card.name,
+          category: "pokemon" as const,
+          set_name: targetSet.name,
+          set_id: targetSet.id,
+          year: targetSet.year,
+          rarity: rarity,
+          artist: card.artist ?? null,
+          hp: card.hp ? parseInt(card.hp, 10) : null,
+          card_types: card.types ?? null,
+          card_number: card.number ?? null,
+          psa_grade: grade,
+          population: grade === 10 ? Math.floor(Math.random() * 200 + 10)
+            : Math.floor(Math.random() * 800 + 50),
+          image_url: card.images.small,
+          image_url_hi: card.images.large,
           pokemon_card_id: card.id,
         };
 
@@ -455,21 +455,21 @@ async function seed() {
 
       const cardRow = {
         symbol,
-        name:            card.name,
-        category:        "pokemon" as const,
-        set_name:        "WotC Black Star Promos",
-        set_id:          "basep",
-        year:            1999,
-        rarity:          "Promo",
-        artist:          card.artist ?? null,
-        hp:              card.hp ? parseInt(card.hp, 10) : null,
-        card_types:      card.types ?? null,
-        card_number:     card.number ?? null,
-        psa_grade:       grade,
-        population:      grade === 10 ? Math.floor(Math.random() * 150 + 5)
-                                      : Math.floor(Math.random() * 600 + 30),
-        image_url:       card.images.small,
-        image_url_hi:    card.images.large,
+        name: card.name,
+        category: "pokemon" as const,
+        set_name: "WotC Black Star Promos",
+        set_id: "basep",
+        year: 1999,
+        rarity: "Promo",
+        artist: card.artist ?? null,
+        hp: card.hp ? parseInt(card.hp, 10) : null,
+        card_types: card.types ?? null,
+        card_number: card.number ?? null,
+        psa_grade: grade,
+        population: grade === 10 ? Math.floor(Math.random() * 150 + 5)
+          : Math.floor(Math.random() * 600 + 30),
+        image_url: card.images.small,
+        image_url_hi: card.images.large,
         pokemon_card_id: card.id,
       };
 

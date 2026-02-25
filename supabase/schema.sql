@@ -138,6 +138,9 @@ CREATE TABLE IF NOT EXISTS profiles (
   id             UUID        PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email          TEXT        NOT NULL UNIQUE,
   name           TEXT,
+  username       TEXT        UNIQUE,
+  favorite_tcgs  TEXT[]      DEFAULT '{}',
+  primary_goal   TEXT,
   cash_balance   DECIMAL(14,2) NOT NULL DEFAULT 25000.00,
   created_at     TIMESTAMPTZ DEFAULT NOW(),
   updated_at     TIMESTAMPTZ DEFAULT NOW()
@@ -197,12 +200,12 @@ CREATE TABLE IF NOT EXISTS vault_holdings (
                                  'listed'
                                )),
   
-  acquisition_price DECIMAL(14,2) NOT NULL DEFAULT 0,
-  listing_price     DECIMAL(14,2),                            -- only set when status = 'listed'
+  acquisition_price DECIMAL(14,2) NOT NULL DEFAULT 0 CHECK (acquisition_price >= 0),
+  listing_price     DECIMAL(14,2) CHECK (listing_price > 0),                            -- only set when status = 'listed'
   
   cert_number      TEXT,                                      -- PSA cert number
   image_url        TEXT,                                      -- user uploaded photo or default card image
-  raw_image_url    TEXT,                                      -- the raw photo taken by the user
+  raw_image_url    TEXT,                                      -- original uncropped photo uploaded by user
   
   created_at       TIMESTAMPTZ DEFAULT NOW(),
   updated_at       TIMESTAMPTZ DEFAULT NOW()
@@ -266,25 +269,35 @@ CREATE POLICY "Users can read own trades"
 CREATE OR REPLACE FUNCTION match_order(
   p_buyer_id UUID,
   p_seller_id UUID,
-  p_holding_id UUID,
-  p_price DECIMAL
+  p_holding_id UUID
 ) RETURNS BOOLEAN AS $$
 DECLARE
   v_buyer_balance DECIMAL;
   v_holding_status TEXT;
   v_holding_owner UUID;
   v_symbol TEXT;
+  v_trade_price DECIMAL;
 BEGIN
-  -- 1. Ensure the buyer has enough balance
-  SELECT cash_balance INTO v_buyer_balance FROM profiles WHERE id = p_buyer_id FOR UPDATE;
-  IF v_buyer_balance < p_price THEN
-    RAISE EXCEPTION 'Insufficient funds';
+  -- 0. Ensure caller is the buyer (prevent UI spoofing)
+  IF auth.uid() IS NOT NULL AND auth.uid() != p_buyer_id THEN
+    RAISE EXCEPTION 'Unauthorized: caller must be the buyer';
   END IF;
 
+  -- 1. Ensure the buyer has enough balance
+  SELECT cash_balance INTO v_buyer_balance FROM profiles WHERE id = p_buyer_id FOR UPDATE;
+
   -- 2. Ensure holding is actually listed & belongs to seller
-  SELECT status, user_id, symbol INTO v_holding_status, v_holding_owner, v_symbol
+  SELECT status, user_id, symbol, listing_price INTO v_holding_status, v_holding_owner, v_symbol, v_trade_price
     FROM vault_holdings 
     WHERE id = p_holding_id FOR UPDATE;
+
+  IF v_trade_price IS NULL OR v_trade_price <= 0 THEN
+    RAISE EXCEPTION 'Invalid listing price';
+  END IF;
+
+  IF v_buyer_balance < v_trade_price THEN
+    RAISE EXCEPTION 'Insufficient funds';
+  END IF;
 
   IF v_holding_owner != p_seller_id THEN
     RAISE EXCEPTION 'Holding does not belong to seller';
@@ -295,22 +308,22 @@ BEGIN
   END IF;
 
   -- 3. Deduct from buyer
-  UPDATE profiles SET cash_balance = cash_balance - p_price WHERE id = p_buyer_id;
+  UPDATE profiles SET cash_balance = cash_balance - v_trade_price WHERE id = p_buyer_id;
 
   -- 4. Add to seller
-  UPDATE profiles SET cash_balance = cash_balance + p_price WHERE id = p_seller_id;
+  UPDATE profiles SET cash_balance = cash_balance + v_trade_price WHERE id = p_seller_id;
 
   -- 5. Transfer card ownership & reset status to tradable
   UPDATE vault_holdings 
     SET user_id = p_buyer_id, 
         status = 'tradable', 
         listing_price = NULL,
-        acquisition_price = p_price
+        acquisition_price = v_trade_price
     WHERE id = p_holding_id;
 
   -- 6. Record trade in ledger
   INSERT INTO trades (holding_id, symbol, buyer_id, seller_id, price, executed_at)
-  VALUES (p_holding_id, v_symbol, p_buyer_id, p_seller_id, p_price, NOW());
+  VALUES (p_holding_id, v_symbol, p_buyer_id, p_seller_id, v_trade_price, NOW());
 
   RETURN TRUE;
 END;
@@ -369,7 +382,7 @@ CREATE TABLE IF NOT EXISTS orders (
   type         TEXT        NOT NULL CHECK (type IN ('buy', 'sell')),
   
   -- The maximum willing to pay (for bids) or minimum willing to accept (for asks)
-  price        DECIMAL(14,2) NOT NULL,
+  price        DECIMAL(14,2) NOT NULL CHECK (price > 0),
   
   -- The number of items wanted or offered. 
   -- When match_order runs successfully on a 1-quantity match, this is decremented.

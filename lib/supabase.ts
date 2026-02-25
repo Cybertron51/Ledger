@@ -1,14 +1,26 @@
+/**
+ * TASH — Supabase Browser Client (Auth Only)
+ *
+ * This client uses the ANON KEY and is exposed to the browser.
+ * It is used ONLY for authentication (signIn, signOut, session management).
+ *
+ * ALL database operations go through API routes using the service role key.
+ * Do NOT use this client for .from() queries.
+ *
+ * The anon key is intentionally public — Supabase Auth requires it
+ * to manage browser sessions. RLS policies ensure the anon key
+ * has zero database access.
+ */
+
 import { createClient } from "@supabase/supabase-js";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 if (!url || !key) {
-  // In dev without .env.local, we just warn — the app falls back to static data.
   if (typeof window !== "undefined") {
     console.warn(
-      "[tash] Supabase env vars not set. Using static market data. " +
-      "Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to .env.local to enable the live catalog."
+      "[tash] Supabase auth env vars not set. Auth will be disabled."
     );
   }
 }

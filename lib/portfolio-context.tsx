@@ -59,7 +59,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(true);
         // Note: getUserVaultHoldings is dynamically imported to avoid circular dependencies in context
         const { getUserVaultHoldings } = await import("@/lib/db/vault");
-        const data = await getUserVaultHoldings(user.id);
+        const data = await getUserVaultHoldings();
 
         // Also merge any local scanned cards that haven't been synced?
         // For simplicity in the escrow demo, we just trust the DB. 

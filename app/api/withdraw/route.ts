@@ -12,9 +12,9 @@ export async function POST(req: NextRequest) {
     const token = authHeader.split(" ")[1];
 
     const body = await req.json();
-    const { userId, holdingId, currentValueUsd } = body;
+    const { holdingId, currentValueUsd } = body;
 
-    if (!userId || !holdingId || !currentValueUsd) {
+    if (!holdingId || !currentValueUsd) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
 
@@ -24,6 +24,12 @@ export async function POST(req: NextRequest) {
     const supabaseClient = createClient(supabaseUrl, supabaseKey, {
       global: { headers: { Authorization: `Bearer ${token}` } }
     });
+
+    const { data: authData, error: authError } = await supabaseClient.auth.getUser(token);
+    if (authError || !authData?.user) {
+      return NextResponse.json({ error: "Unauthorized or invalid token" }, { status: 401 });
+    }
+    const userId = authData.user.id;
 
     if (!globalSupabase) {
       return NextResponse.json({ error: "Supabase not configured" }, { status: 500 });
@@ -48,15 +54,16 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Update holding status to 'withdrawn'
-    const { error: updateErr } = await supabaseClient
+    const { error: updateErr, data: updatedData } = await supabaseClient
       .from("vault_holdings")
       .update({ status: "withdrawn" })
       .eq("id", holdingId)
       .eq("user_id", userId)
-      .in("status", ["tradable", "in_vault"]);
+      .eq("status", "tradable")
+      .select("id");
 
-    if (updateErr) {
-       return NextResponse.json({ error: "Failed to update holding or holding is not tradable." }, { status: 400 });
+    if (updateErr || !updatedData?.length) {
+      return NextResponse.json({ error: "Failed to update holding or holding is not tradable." }, { status: 400 });
     }
 
     // 4. Deduct fee using Service Role to bypass strict RLS if needed, or via RPC.

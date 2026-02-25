@@ -1,15 +1,18 @@
 "use client";
+export const dynamic = "force-dynamic";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { User, Mail, Shield, LogOut, ChevronRight, Bell, CreditCard } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { usePortfolio } from "@/lib/portfolio-context";
 import { colors, layout } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
 import Link from "next/link";
 
 export default function AccountPage() {
   const { user, isAuthenticated, signOut } = useAuth();
+  const { holdings } = usePortfolio();
   const router = useRouter();
   const [signingOut, setSigningOut] = useState(false);
 
@@ -112,8 +115,8 @@ export default function AccountPage() {
       >
         {[
           { label: "Available", value: formatCurrency(user.cashBalance) },
-          { label: "Holdings", value: "6 cards" },
-          { label: "Member Since", value: "2025" },
+          { label: "Holdings", value: `${holdings.filter(h => h.status !== "withdrawn").length} cards` },
+          { label: "Member Since", value: user.memberSince },
         ].map((stat, i) => (
           <div
             key={stat.label}

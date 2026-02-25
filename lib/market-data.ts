@@ -24,6 +24,7 @@ export interface AssetData {
   category: "pokemon" | "sports";
   hasLiquidity?: boolean; // True if there are active listings for this card
   population: number;
+  imageUrl?: string;
 }
 
 import type { DBCard } from "./db/cards";
@@ -44,6 +45,7 @@ export function mapDBCardToAssetData(c: DBCard): AssetData {
     category: c.category as "pokemon" | "sports",
     hasLiquidity: false, // Will be populated by the frontend
     population: c.population,
+    imageUrl: c.image_url || undefined,
   };
 }
 

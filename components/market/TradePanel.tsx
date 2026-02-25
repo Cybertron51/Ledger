@@ -6,7 +6,7 @@ import { colors } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
 import { usePortfolio } from "@/lib/portfolio-context";
-import { supabase } from "@/lib/supabase";
+import { api } from "@/lib/api";
 import type { AssetData } from "@/lib/market-data";
 
 interface TradePanelProps {
@@ -72,17 +72,8 @@ export function TradePanel({ asset, onRequestSignIn }: TradePanelProps) {
     setErrorMsg("");
 
     try {
-      const { data: { session } } = await supabase!.auth.getSession();
-      const token = session?.access_token;
-
-      if (!token) throw new Error("Missing auth token. Please sign in again.");
-
-      const res = await fetch("/api/orders", {
+      const res = await api("/api/orders", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
         body: JSON.stringify({
           userId: user.id,
           symbol: asset.symbol,
@@ -111,10 +102,10 @@ export function TradePanel({ asset, onRequestSignIn }: TradePanelProps) {
           set: asset.set,
           year: parseInt(asset.set.match(/\d{4}/)?.[0] ?? "2024"),
           acquisitionPrice: estPrice,
-          status: "in_vault",
+          status: "tradable",
           dateDeposited: new Date().toISOString().slice(0, 10),
           certNumber: `PSA ${Math.floor(10_000_000 + Math.random() * 90_000_000)}`,
-          imageUrl: `/cards/${asset.symbol}.svg`,
+          imageUrl: asset.imageUrl || `/cards/${asset.symbol}.svg`,
         });
       } else {
         updateBalance(total);

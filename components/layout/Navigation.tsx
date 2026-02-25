@@ -10,12 +10,11 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { BarChart2, TrendingUp, Search, Bell, ChevronDown, Camera } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { colors, layout } from "@/lib/theme";
 import { useAuth } from "@/lib/auth";
-import { SignInModal } from "@/components/auth/SignInModal";
 
 // ─────────────────────────────────────────────────────────
 // Nav links
@@ -29,7 +28,7 @@ interface NavLink {
 
 const NAV_LINKS: NavLink[] = [
   { href: "/", label: "Market", icon: <TrendingUp size={15} strokeWidth={2} /> },
-  { href: "/scan", label: "Upload", icon: <Camera size={15} strokeWidth={2} /> },
+  { href: "/portfolio", label: "Portfolio", icon: <BarChart2 size={15} strokeWidth={2} /> },
 ];
 
 // ─────────────────────────────────────────────────────────
@@ -158,8 +157,8 @@ function AccountChip() {
 
 export function Navigation() {
   const pathname = usePathname();
+  const router = useRouter();
   const { isAuthenticated } = useAuth();
-  const [showSignIn, setShowSignIn] = useState(false);
 
   return (
     <>
@@ -219,22 +218,22 @@ export function Navigation() {
 
         {/* ── Right Controls ───────────────────────── */}
         <div className="flex items-center gap-2">
-          {/* Portfolio Link */}
+          {/* Upload Link */}
           <Link
-            href="/portfolio"
+            href="/scan"
             className={cn(
               "flex items-center gap-[6px] rounded-[10px] px-3 py-[7px]",
               "text-[13px] font-bold transition-all duration-150 active:scale-[0.98]",
               "hover:bg-[#1E1E1E]"
             )}
             style={{
-              color: pathname.startsWith("/portfolio") ? colors.textPrimary : colors.textSecondary,
-              backgroundColor: pathname.startsWith("/portfolio") ? colors.surface : "transparent",
+              color: pathname.startsWith("/scan") ? colors.textPrimary : colors.textSecondary,
+              backgroundColor: pathname.startsWith("/scan") ? colors.surface : "transparent",
               border: `1px solid ${colors.border}`,
             }}
           >
-            <BarChart2 size={15} strokeWidth={2} />
-            <span>Portfolio</span>
+            <Camera size={15} strokeWidth={2} />
+            <span>Upload</span>
           </Link>
 
           {/* Search */}
@@ -269,7 +268,7 @@ export function Navigation() {
             <AccountChip />
           ) : (
             <button
-              onClick={() => setShowSignIn(true)}
+              onClick={() => router.push("/onboarding")}
               className="rounded-[10px] px-4 py-[7px] text-[13px] font-semibold transition-all duration-150 active:scale-[0.98]"
               style={{ background: colors.green, color: colors.textInverse }}
             >
@@ -278,9 +277,6 @@ export function Navigation() {
           )}
         </div>
       </header>
-
-      {/* Sign-in modal */}
-      {showSignIn && <SignInModal onClose={() => setShowSignIn(false)} />}
     </>
   );
 }

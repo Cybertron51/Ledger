@@ -1,4 +1,5 @@
 "use client";
+export const dynamic = "force-dynamic";
 
 /**
  * TASH — Market Home
@@ -457,7 +458,7 @@ export default function MarketPage() {
             <div className="flex flex-col items-center justify-center rounded-[10px] gap-4" style={{ minHeight: 300 }}>
               {(() => {
                 const h = holdings?.find(h => h.symbol === selected.symbol);
-                const officialImage = h?.imageUrl || `/cards/${selected.symbol}.svg`;
+                const officialImage = h?.imageUrl || selected.imageUrl || `/cards/${selected.symbol}.svg`;
                 const images = h?.rawImageUrl ? [officialImage, h.rawImageUrl] : [officialImage];
 
                 return (

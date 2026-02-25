@@ -1,4 +1,4 @@
-import { supabase } from "./supabase";
+import { supabaseAdmin as supabase } from "./supabase-admin";
 
 /**
  * Fetches the primary (front) image for a PSA certification number

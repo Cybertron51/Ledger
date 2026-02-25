@@ -1,7 +1,8 @@
 "use client";
+export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { apiGet, apiPatch } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { colors, layout } from "@/lib/theme";
 import { Loader2, Check } from "lucide-react";
@@ -18,38 +19,28 @@ export default function AdminPage() {
     useEffect(() => {
         async function fetchShipped() {
             setIsLoading(true);
-            if (!supabase) return;
-            const { data } = await supabase
-                .from("vault_holdings")
-                .select(`
-          id,
-          symbol,
-          acquisition_price,
-          status,
-          image_url,
-          profiles(name, email)
-        `)
-                .eq("status", "shipped")
-                .order("created_at", { ascending: false });
-
-            setShippedItems(data || []);
+            try {
+                const data = await apiGet<any[]>("/api/admin/approve");
+                setShippedItems(data || []);
+            } catch {
+                setShippedItems([]);
+            }
             setIsLoading(false);
         }
 
-        fetchShipped();
-    }, []);
+        if (isAuthenticated) fetchShipped();
+        else setIsLoading(false);
+    }, [isAuthenticated]);
 
     async function approveItem(id: string) {
-        if (!supabase) return;
-
         // Optimistic UI
         setShippedItems((prev) => prev.filter((item) => item.id !== id));
 
-        // Update DB to tradable
-        await supabase
-            .from("vault_holdings")
-            .update({ status: "tradable" })
-            .eq("id", id);
+        try {
+            await apiPatch("/api/admin/approve", { holdingId: id });
+        } catch (err) {
+            console.error("Failed to approve:", err);
+        }
     }
 
     if (!isAuthenticated && !isLoading) {

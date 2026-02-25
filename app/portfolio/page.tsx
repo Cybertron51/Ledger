@@ -1,4 +1,5 @@
 "use client";
+export const dynamic = "force-dynamic";
 
 /**
  * TASH — Portfolio Page
@@ -23,7 +24,7 @@ import { useAuth } from "@/lib/auth";
 import { SignInModal } from "@/components/auth/SignInModal";
 import { colors, layout, psaGradeColor, zIndex } from "@/lib/theme";
 import { formatCurrency, cn } from "@/lib/utils";
-import { supabase } from "@/lib/supabase";
+
 
 // ─────────────────────────────────────────────────────────
 // Types
@@ -37,7 +38,7 @@ type ModalState =
   | null;
 
 type SortBy = "value" | "gain" | "name" | "date";
-type StatusFilter = "all" | "in_vault" | "listed" | "in_transit" | "pending_authentication" | "shipped" | "received" | "authenticating" | "tradable" | "withdrawn";
+type StatusFilter = "all" | "listed" | "in_transit" | "pending_authentication" | "shipped" | "received" | "authenticating" | "tradable" | "withdrawn";
 
 interface Activity {
   id: string;
@@ -143,10 +144,10 @@ export default function PortfolioPage() {
     if (isNaN(price)) return;
 
     const holding = holdings.find((h) => h.id === modalState.holdingId);
-    if (!holding || !user || !supabase) return;
+    if (!holding || !user) return;
 
     try {
-      await updateVaultHoldingStatus(modalState.holdingId, user.id, {
+      await updateVaultHoldingStatus(modalState.holdingId, {
         status: "listed",
         listingPrice: price
       });
@@ -175,16 +176,16 @@ export default function PortfolioPage() {
 
   async function handleCancelListing(id: string) {
     const holding = holdings.find((h) => h.id === id);
-    if (!holding || !supabase || !user) return;
+    if (!holding || !user) return;
 
     try {
-      await updateVaultHoldingStatus(id, user.id, {
-        status: "in_vault",
+      await updateVaultHoldingStatus(id, {
+        status: "tradable",
         listingPrice: null
       });
 
       // Revert status
-      updateHolding(id, { status: "in_vault", listingPrice: undefined });
+      updateHolding(id, { status: "tradable", listingPrice: undefined });
 
       setActivities((prev) => [...prev, {
         id: `a${Date.now()}`,
@@ -252,11 +253,19 @@ export default function PortfolioPage() {
     setModalState(null);
   }
 
-  function confirmShipment() {
+  async function confirmShipment() {
     if (!modalState || modalState.type !== "ship") return;
     const holding = holdings.find((h) => h.id === modalState.holdingId);
-    updateHolding(modalState.holdingId, { status: "shipped" });
-    if (holding) {
+    if (!holding || !user) return;
+
+    try {
+      await updateVaultHoldingStatus(modalState.holdingId, {
+        status: "shipped",
+      });
+
+      // Update local state after successful DB write
+      updateHolding(modalState.holdingId, { status: "shipped" });
+
       setActivities((prev) => [...prev, {
         id: `a${Date.now()}`,
         type: "shipped",
@@ -265,7 +274,11 @@ export default function PortfolioPage() {
         amount: priceMap[holding.symbol] ?? 0,
         timestamp: new Date(),
       }]);
+    } catch (err) {
+      console.error("Failed to update shipment status:", err);
+      alert("Failed to update shipment status. Please try again.");
     }
+
     setModalState(null);
   }
 
@@ -288,10 +301,10 @@ export default function PortfolioPage() {
       set: asset.set,
       year: new Date().getFullYear(),
       acquisitionPrice: form.acquisitionPrice,
-      status: "in_vault",
+      status: "tradable",
       dateDeposited: new Date().toISOString().split("T")[0],
       certNumber: form.certNumber || `PSA ${Math.floor(Math.random() * 90000000 + 10000000)}`,
-      imageUrl: form.photoUrl ?? `/cards/${asset.symbol}.svg`,
+      imageUrl: form.photoUrl ?? asset.imageUrl ?? `/cards/${asset.symbol}.svg`,
     };
     addHolding(newHolding);
     setSelectedId(newHolding.id);
@@ -364,17 +377,6 @@ export default function PortfolioPage() {
             <p className="text-[16px] font-bold leading-tight" style={{ color: colors.textPrimary }}>
               Portfolio
             </p>
-            <button
-              onClick={() => setModalState({ type: "deposit" })}
-              style={{
-                display: "flex", alignItems: "center", gap: 4,
-                fontSize: 11, fontWeight: 600, padding: "4px 8px", borderRadius: 6,
-                border: `1px solid ${colors.green}44`, background: colors.greenMuted,
-                color: colors.green, cursor: "pointer",
-              }}
-            >
-              <Plus size={12} /> Deposit
-            </button>
           </div>
           <p
             className="mt-[2px] tabular-nums text-[20px] font-bold leading-tight tracking-tight"
@@ -444,8 +446,7 @@ export default function PortfolioPage() {
               { key: "in_transit" as const, label: "Transit" }, // Keep for legacy but map to shipped/received mentally or remove
               { key: "shipped" as const, label: "Shipped" },
               { key: "authenticating" as const, label: "Authenticating" },
-              { key: "in_vault" as const, label: "Vaulted" },
-              { key: "tradable" as const, label: "Tradable" },
+              { key: "tradable" as const, label: "Vaulted" },
               { key: "listed" as const, label: "Listed" },
             ]).map(({ key, label }) => {
               const count = key === "all" ? holdings.length : holdings.filter((h) => h.status === key).length;
@@ -533,7 +534,7 @@ export default function PortfolioPage() {
                           style={{
                             width: 6, height: 6, flexShrink: 0,
                             background:
-                              holding.status === "tradable" || holding.status === "in_vault" ? colors.green
+                              holding.status === "tradable" ? colors.green
                                 : holding.status === "listed" ? colors.gold
                                   : holding.status === "withdrawn" ? colors.textMuted
                                     : "#F5C842", // pending, shipped, received, authenticating
@@ -708,7 +709,7 @@ function PortfolioOverview({ holdings, priceMap, assets, activities, onSelectCar
   const maxCatValue = Math.max(...categories.map(([, v]) => v), 1);
 
   // ── Status breakdown ───────────────────────────────────
-  const inVault = holdings.filter((h) => h.status === "in_vault").length;
+  const inVault = holdings.filter((h) => h.status === "tradable").length;
   const listed = holdings.filter((h) => h.status === "listed").length;
   const inTransit = holdings.filter((h) => h.status === "in_transit").length;
 
@@ -1077,8 +1078,7 @@ function DetailPanel({ holding, currentValue, changePct, onOpenListModal, onCanc
     shipped: { label: "Shipped", bg: "rgba(245,200,66,0.15)", color: "#F5C842" },
     received: { label: "Received", bg: "rgba(245,200,66,0.15)", color: "#F5C842" },
     authenticating: { label: "Authenticating", bg: "rgba(245,200,66,0.15)", color: "#F5C842" },
-    in_vault: { label: "In Vault", bg: colors.greenMuted, color: colors.green }, // legacy/fallback
-    tradable: { label: "Tradable", bg: colors.greenMuted, color: colors.green },
+    tradable: { label: "In Vault", bg: colors.greenMuted, color: colors.green },
     in_transit: { label: "In Transit", bg: "rgba(245,200,66,0.15)", color: "#F5C842" }, // legacy/fallback for withdrawal
     withdrawn: { label: "Withdrawn", bg: colors.surfaceOverlay, color: colors.textMuted },
     listed: { label: "Listed for Sale", bg: colors.surface, color: colors.textSecondary },
@@ -1170,7 +1170,7 @@ function DetailPanel({ holding, currentValue, changePct, onOpenListModal, onCanc
 
       {/* Action buttons */}
       <div className="mt-5 flex gap-3">
-        {["in_vault", "tradable"].includes(holding.status) && (
+        {["tradable"].includes(holding.status) && (
           <button onClick={() => onOpenListModal(holding.id)} className="flex-1 rounded-[10px] px-4 py-[10px] text-[13px] font-semibold transition-colors duration-150" style={{ background: colors.green, color: colors.textInverse, cursor: "pointer", border: `1px solid ${colors.green}` }}>
             List for Sale
           </button>
@@ -1190,7 +1190,7 @@ function DetailPanel({ holding, currentValue, changePct, onOpenListModal, onCanc
             List for Sale
           </button>
         )}
-        {["in_vault", "tradable"].includes(holding.status) && (
+        {["tradable"].includes(holding.status) && (
           <button onClick={() => onOpenWithdrawModal(holding.id)} className="flex-1 rounded-[10px] px-4 py-[10px] text-[13px] font-semibold transition-colors duration-150" style={{ background: colors.surface, color: colors.textPrimary, cursor: "pointer", border: `1px solid ${colors.border}` }}>
             Request Withdrawal
           </button>

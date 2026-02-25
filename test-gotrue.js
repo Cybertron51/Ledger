@@ -1,0 +1,10 @@
+const { createClient } = require("@supabase/supabase-js");
+
+const url = "http://127.0.0.1:54321";
+const key = "sb_publishable_ACJWlzQHlZjBrEguHvfOxg_3BJgxAaH";
+const token = "eyJhbGciOiJFUzI1NiIsImtpZCI6ImI4MTI2OWYxLTIxZDgtNGYyZS1iNzE5LWMyMjQwYTg0MGQ5MCIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwOi8vMTI3LjAuMC4xOjU0MzIxL2F1dGgvdjEiLCJzdWIiOiIzMzMzMzMzMy0zMzMzLTMzMzMtMzMzMy0zMzMzMzMzMzMzMzMiLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzcxOTk5NjMxLCJpYXQiOjE3NzE5OTYwMzEsImVtYWlsIjoiYm9iQHRhc2guY29tIiwicGhvbmUiOiIiLCJhcHBfbWV0YWRhdGEiOnsicHJvdmlkZXIiOiJlbWFpbCIsInByb3ZpZGVycyI6WyJlbWFpbCJdfSwidXNlcl9tZXRhZGF0YSI6eyJuYW1lIjoiQm9iIFRyYWRlciJ9LCJyb2xlIjoiYXV0aGVudGljYXRlZCIsImFhbCI6ImFhbDEiLCJhbXIiOlt7Im1ldGhvZCI6InBhc3N3b3JkIiwidGltZXN0YW1wIjoxNzcxOTk2MDMxfV0sInNlc3Npb25faWQiOiI3YWU1Yjk1YS1iZjEyLTRiOTMtYjQxOS0yNDJhNDJlODAzOTEiLCJpc19hbm9ueW1vdXMiOmZhbHNlfQ.roG5fcO04pl3jbJhT_cipn1Tc757wpOgSEuxc5LsT2IW5PcvhZxeRpOjxFZIC4IlIk9QEW2ezcPuSpkWjOXRFA";
+
+const supabase = createClient(url, key);
+supabase.auth.getUser(token).then((res) => {
+  console.log(JSON.stringify(res, null, 2));
+}).catch(console.error);

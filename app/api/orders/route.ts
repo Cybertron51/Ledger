@@ -19,10 +19,18 @@ export async function POST(req: NextRequest) {
     const token = authHeader.split(" ")[1];
 
     const body = await req.json();
-    const { userId, symbol, priceUsd, isBuy, quantity } = body;
+    const { symbol, priceUsd, isBuy, quantity } = body;
 
-    if (!userId || !symbol || !priceUsd || isBuy === undefined || !quantity) {
+    if (!symbol || priceUsd === undefined || isBuy === undefined || quantity === undefined) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    }
+
+    if (typeof priceUsd !== "number" || priceUsd <= 0) {
+      return NextResponse.json({ error: "Invalid price: must be greater than 0" }, { status: 400 });
+    }
+
+    if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity <= 0) {
+      return NextResponse.json({ error: "Invalid quantity: must be a positive integer" }, { status: 400 });
     }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -36,6 +44,13 @@ export async function POST(req: NextRequest) {
         }
       }
     });
+
+    const { data: authData, error: authError } = await supabaseClient.auth.getUser(token);
+    if (authError || !authData?.user) {
+      console.error("Auth Error details:", authError);
+      return NextResponse.json({ error: "Unauthorized or invalid token", details: authError }, { status: 401 });
+    }
+    const userId = authData.user.id;
 
     if (!globalSupabase) {
       return NextResponse.json({ error: "Supabase not configured" }, { status: 500 });
@@ -61,8 +76,7 @@ export async function POST(req: NextRequest) {
         const { error: rpcErr } = await supabaseClient.rpc("match_order", {
           p_buyer_id: userId,
           p_seller_id: listing.user_id,
-          p_holding_id: listing.id,
-          p_price: listing.listing_price
+          p_holding_id: listing.id
         });
 
         if (rpcErr) {
@@ -78,13 +92,13 @@ export async function POST(req: NextRequest) {
 
     } else {
       // Selling
-      // Find 'quantity' number of 'tradable' or 'in_vault' cards owned by user
+      // Find 'quantity' number of 'tradable' cards owned by user
       const { data: holdings, error: fetchErr } = await supabaseClient
         .from("vault_holdings")
         .select("id")
         .eq("user_id", userId)
         .eq("symbol", symbol)
-        .in("status", ["tradable", "in_vault"])
+        .eq("status", "tradable")
         .limit(quantity);
 
       if (fetchErr || !holdings || holdings.length < quantity) {

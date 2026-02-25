@@ -17,10 +17,14 @@ import { supabase } from "@/lib/supabase";
 export interface User {
   id: string;
   name: string;
+  username: string | null;
+  favoriteTcgs: string[];
+  primaryGoal: string | null;
   email: string;
   initials: string;
   cashBalance: number;
   walletAddress: string;
+  memberSince: string;
 }
 
 interface AuthContextValue {
@@ -50,41 +54,50 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!supabase) return;
 
-    async function fetchProfile(userId: string, email: string) {
-      if (!supabase) return;
-      const { data, error } = await supabase
-        .from("profiles")
-        .select("name, cash_balance")
-        .eq("id", userId)
-        .single();
+    async function fetchProfile(userId: string, email: string, accessToken: string) {
+      try {
+        const res = await fetch("/api/user/profile", {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        if (!res.ok) {
+          console.error("Failed to fetch user profile:", res.status);
+          return;
+        }
+        const data = await res.json();
 
-      if (error || !data) {
-        console.error("Failed to fetch user profile", error);
-        return;
+        const year = data.created_at
+          ? new Date(data.created_at).getFullYear().toString()
+          : new Date().getFullYear().toString();
+
+        setUser({
+          id: userId,
+          name: data.name || "User",
+          username: data.username,
+          favoriteTcgs: data.favorite_tcgs || [],
+          primaryGoal: data.primary_goal,
+          email: email,
+          initials: (data.name || "U")[0].toUpperCase(),
+          cashBalance: Number(data.cash_balance),
+          walletAddress: "0x0000000000000000000000000000000000000000",
+          memberSince: year,
+        });
+      } catch (err) {
+        console.error("Failed to fetch user profile", err);
       }
-
-      setUser({
-        id: userId,
-        name: data.name || "User",
-        email: email,
-        initials: (data.name || "U")[0].toUpperCase(),
-        cashBalance: Number(data.cash_balance),
-        walletAddress: "0x0000000000000000000000000000000000000000", // placeholder
-      });
     }
 
     // Check active session
     supabase.auth.getSession().then(({ data: { session: initSession } }) => {
       setSession(initSession);
       if (initSession?.user) {
-        fetchProfile(initSession.user.id, initSession.user.email!);
+        fetchProfile(initSession.user.id, initSession.user.email!, initSession.access_token);
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
       setSession(newSession);
       if (event === "SIGNED_IN" && newSession?.user) {
-        fetchProfile(newSession.user.id, newSession.user.email!);
+        fetchProfile(newSession.user.id, newSession.user.email!, newSession.access_token);
       } else if (event === "SIGNED_OUT") {
         setUser(null);
       }
@@ -93,7 +106,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signIn = useCallback(() => { }, []);
+  const signIn = useCallback(async () => {
+    if (!supabase) return;
+
+    // The redirect target depends on where we initiated the sign-in.
+    // In our case we always want them to evaluate if they need onboarding.
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/onboarding`,
+      }
+    });
+  }, []);
 
   const signOut = useCallback(async () => {
     if (supabase) {

@@ -1,6 +1,7 @@
 "use client";
+export const dynamic = "force-dynamic";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowDownLeft,
@@ -9,99 +10,19 @@ import {
   CheckCircle2,
   XCircle,
   Filter,
+  Loader2,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { colors, layout } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
 import Link from "next/link";
+import type { Transaction, TxType, TxStatus } from "@/lib/db/transactions";
 
 // ─────────────────────────────────────────────────────────
 // Types
 // ─────────────────────────────────────────────────────────
 
-type TxType = "buy" | "sell" | "deposit" | "withdrawal";
-type TxStatus = "settled" | "pending" | "cancelled";
-type Filter = "all" | "buy" | "sell" | "deposit";
-
-interface Transaction {
-  id: string;
-  type: TxType;
-  status: TxStatus;
-  cardName?: string;
-  grade?: number;
-  amount: number;
-  quantity?: number;
-  priceEach?: number;
-  timestamp: Date;
-  txHash?: string;
-}
-
-// ─────────────────────────────────────────────────────────
-// Mock data — replace with real API call in production
-// ─────────────────────────────────────────────────────────
-
-const MOCK_TRANSACTIONS: Transaction[] = [
-  {
-    id: "tx1",
-    type: "buy",
-    status: "settled",
-    cardName: "Charizard Holo",
-    grade: 10,
-    amount: 14_250,
-    quantity: 1,
-    priceEach: 14_250,
-    timestamp: new Date(Date.now() - 2 * 60 * 60 * 1000),
-    txHash: "0xabc123",
-  },
-  {
-    id: "tx2",
-    type: "deposit",
-    status: "settled",
-    amount: 25_000,
-    timestamp: new Date(Date.now() - 6 * 60 * 60 * 1000),
-  },
-  {
-    id: "tx3",
-    type: "sell",
-    status: "settled",
-    cardName: "Blastoise Holo",
-    grade: 10,
-    amount: 3_800,
-    quantity: 1,
-    priceEach: 3_800,
-    timestamp: new Date(Date.now() - 24 * 60 * 60 * 1000),
-    txHash: "0xdef456",
-  },
-  {
-    id: "tx4",
-    type: "buy",
-    status: "pending",
-    cardName: "Pikachu Illustrator",
-    grade: 10,
-    amount: 248_000,
-    quantity: 1,
-    priceEach: 248_000,
-    timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
-  },
-  {
-    id: "tx5",
-    type: "deposit",
-    status: "settled",
-    amount: 10_000,
-    timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000),
-  },
-  {
-    id: "tx6",
-    type: "sell",
-    status: "cancelled",
-    cardName: "LeBron James RC",
-    grade: 10,
-    amount: 5_650,
-    quantity: 1,
-    priceEach: 5_650,
-    timestamp: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
-  },
-];
+type FilterType = "all" | "buy" | "sell" | "deposit";
 
 // ─────────────────────────────────────────────────────────
 // Helpers
@@ -191,10 +112,39 @@ function StatusBadge({ status }: { status: TxStatus }) {
 // ─────────────────────────────────────────────────────────
 
 export default function HistoryPage() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const router = useRouter();
-  const [activeFilter, setActiveFilter] = useState<Filter>("all");
+  const [activeFilter, setActiveFilter] = useState<FilterType>("all");
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [summary, setSummary] = useState({ totalTrades: 0, settled: 0, pending: 0 });
+  const [isLoading, setIsLoading] = useState(true);
+
+  // ── Fetch transactions from Supabase ───────────────────
+  useEffect(() => {
+    if (!isAuthenticated || !user) {
+      setIsLoading(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    async function fetchData() {
+      const { getUserTransactions, getUserTransactionSummary } = await import("@/lib/db/transactions");
+      const [txns, stats] = await Promise.all([
+        getUserTransactions(),
+        getUserTransactionSummary(),
+      ]);
+
+      if (!isMounted) return;
+      setTransactions(txns);
+      setSummary(stats);
+      setIsLoading(false);
+    }
+
+    fetchData();
+    return () => { isMounted = false; };
+  }, [isAuthenticated, user]);
 
   if (!isAuthenticated) {
     return (
@@ -216,14 +166,14 @@ export default function HistoryPage() {
     );
   }
 
-  const filters: { key: Filter; label: string }[] = [
+  const filters: { key: FilterType; label: string }[] = [
     { key: "all", label: "All" },
     { key: "buy", label: "Buys" },
     { key: "sell", label: "Sells" },
     { key: "deposit", label: "Deposits" },
   ];
 
-  const filtered = MOCK_TRANSACTIONS.filter((tx) =>
+  const filtered = transactions.filter((tx) =>
     activeFilter === "all" ? true : tx.type === activeFilter
   );
 
@@ -248,18 +198,9 @@ export default function HistoryPage() {
         style={{ borderColor: colors.border, background: colors.surface }}
       >
         {[
-          {
-            label: "Total Trades",
-            value: MOCK_TRANSACTIONS.filter((t) => t.type === "buy" || t.type === "sell").length.toString(),
-          },
-          {
-            label: "Settled",
-            value: MOCK_TRANSACTIONS.filter((t) => t.status === "settled").length.toString(),
-          },
-          {
-            label: "Pending",
-            value: MOCK_TRANSACTIONS.filter((t) => t.status === "pending").length.toString(),
-          },
+          { label: "Total Trades", value: summary.totalTrades.toString() },
+          { label: "Settled", value: summary.settled.toString() },
+          { label: "Pending", value: summary.pending.toString() },
         ].map((stat, i) => (
           <div
             key={stat.label}
@@ -296,7 +237,18 @@ export default function HistoryPage() {
       </div>
 
       {/* Transaction list */}
-      {filtered.length === 0 ? (
+      {isLoading ? (
+        <div
+          className="flex flex-col items-center justify-center gap-2 rounded-[12px] border py-14"
+          style={{ borderColor: colors.border, background: colors.surface }}
+        >
+          <Loader2 size={24} style={{ color: colors.textMuted, animation: "spin 1s linear infinite" }} />
+          <p className="text-[13px]" style={{ color: colors.textMuted }}>
+            Loading transactions…
+          </p>
+          <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+        </div>
+      ) : filtered.length === 0 ? (
         <div
           className="flex flex-col items-center justify-center gap-2 rounded-[12px] border py-14"
           style={{ borderColor: colors.border, background: colors.surface }}
@@ -318,10 +270,10 @@ export default function HistoryPage() {
               tx.type === "deposit"
                 ? "Cash Deposit"
                 : tx.type === "withdrawal"
-                ? "Withdrawal"
-                : tx.cardName
-                ? `${tx.type === "buy" ? "Bought" : "Sold"} ${tx.cardName}`
-                : tx.type;
+                  ? "Withdrawal"
+                  : tx.cardName
+                    ? `${tx.type === "buy" ? "Bought" : "Sold"} ${tx.cardName}`
+                    : tx.type;
 
             return (
               <div key={tx.id}>
