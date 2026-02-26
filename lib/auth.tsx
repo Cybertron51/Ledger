@@ -23,6 +23,7 @@ export interface User {
   email: string;
   initials: string;
   cashBalance: number;
+  lockedBalance: number;
   walletAddress: string;
   memberSince: string;
 }
@@ -78,6 +79,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: email,
           initials: (data.name || "U")[0].toUpperCase(),
           cashBalance: Number(data.cash_balance),
+          lockedBalance: Number(data.locked_balance || 0),
           walletAddress: "0x0000000000000000000000000000000000000000",
           memberSince: year,
         });

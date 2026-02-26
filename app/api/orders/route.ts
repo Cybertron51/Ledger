@@ -56,44 +56,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Supabase not configured" }, { status: 500 });
     }
 
+    // Use service role client for all RPC calls (anon key blocked by RLS)
+    const supabaseServiceUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const adminClient = createClient(supabaseServiceUrl, supabaseServiceKey);
+
     if (isBuy) {
-      // Find 'quantity' number of cheapest listed cards for this symbol
-      const { data: listings, error: fetchErr } = await supabaseClient
-        .from("vault_holdings")
-        .select("id, user_id, listing_price")
-        .eq("symbol", symbol)
-        .eq("status", "listed")
-        .neq("user_id", userId) // never match against the buyer's own listings
-        .lte("listing_price", priceUsd) // must be less than or equal to what buyer is willing to pay
-        .limit(quantity);
+      const { error: rpcErr } = await adminClient.rpc("place_order", {
+        p_user_id: userId,
+        p_symbol: symbol,
+        p_type: "buy",
+        p_price: priceUsd,
+        p_quantity: quantity
+      });
 
-      if (fetchErr || !listings || listings.length < quantity) {
-        return NextResponse.json({ error: "Not enough matching inventory available at this price." }, { status: 400 });
-      }
-
-      // Execute match_order RPC for each listing
-      for (const listing of listings) {
-        const { error: rpcErr } = await supabaseClient.rpc("match_order", {
-          p_buyer_id: userId,
-          p_seller_id: listing.user_id,
-          p_holding_id: listing.id
-        });
-
-        if (rpcErr) {
-          console.error("Match order error:", rpcErr);
-          return NextResponse.json({ error: "Failed to settle order: " + rpcErr.message }, { status: 500 });
-        }
+      if (rpcErr) {
+        console.error("Match order error:", rpcErr);
+        return NextResponse.json({ error: "Failed to place or settle order: " + rpcErr.message }, { status: 500 });
       }
 
       return NextResponse.json({
-        status: "settled",
-        message: "Order matched and settled successfully."
+        status: "success",
+        message: "Buy order placed and matched successfully."
       });
 
     } else {
-      // Selling
-      // Find 'quantity' number of 'tradable' cards owned by user
-      const { data: holdings, error: fetchErr } = await supabaseClient
+      // Selling — find tradable holdings then place orders via admin client
+
+      const { data: holdings, error: fetchErr } = await adminClient
         .from("vault_holdings")
         .select("id")
         .eq("user_id", userId)
@@ -105,21 +95,26 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Not enough tradable inventory in your vault." }, { status: 400 });
       }
 
-      // Update them to listed
-      const holdingIds = holdings.map(h => h.id);
-      const { error: updateErr } = await supabaseClient
-        .from("vault_holdings")
-        .update({ status: "listed", listing_price: priceUsd })
-        .in("id", holdingIds)
-        .eq("user_id", userId);
+      // Execute place_order RPC for each holding individually via service role
+      for (const holding of holdings) {
+        const { error: rpcErr } = await adminClient.rpc("place_order", {
+          p_user_id: userId,
+          p_symbol: symbol,
+          p_type: "sell",
+          p_price: priceUsd,
+          p_quantity: 1,
+          p_holding_id: holding.id
+        });
 
-      if (updateErr) {
-        return NextResponse.json({ error: "Failed to list holdings." }, { status: 500 });
+        if (rpcErr) {
+          console.error("Place order error:", rpcErr);
+          return NextResponse.json({ error: "Failed to place or settle order: " + rpcErr.message }, { status: 500 });
+        }
       }
 
       return NextResponse.json({
-        status: "queued",
-        message: "Cards listed on the market successfully."
+        status: "success",
+        message: "Sell order(s) placed and matched successfully."
       });
     }
 
@@ -129,24 +124,84 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function GET() {
-  // We can fetch all 'listed' cards from vault_holdings here to construct an order book summary if needed
+export async function DELETE(req: NextRequest) {
+  try {
+    const authHeader = req.headers.get("authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const token = authHeader.split(" ")[1];
+
+    const body = await req.json();
+    const { orderId } = body;
+
+    if (!orderId) {
+      return NextResponse.json({ error: "orderId required" }, { status: 400 });
+    }
+
+    // Verify the user's identity via JWT
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    const supabaseClient = createClient(supabaseUrl, supabaseKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } }
+    });
+
+    const { data: authData, error: authError } = await supabaseClient.auth.getUser(token);
+    if (authError || !authData?.user) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    // Use admin client for the RPC call (RLS blocks anon key)
+    // SECURITY: cancel_order enforces ownership via p_user_id match in the WHERE clause
+    const supabaseServiceUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+    const adminClient = createClient(supabaseServiceUrl, supabaseServiceKey);
+
+    const { error: rpcErr } = await adminClient.rpc("cancel_order", {
+      p_order_id: orderId,
+      p_user_id: authData.user.id
+    });
+
+    if (rpcErr) {
+      console.error("Cancel order error:", rpcErr);
+      return NextResponse.json({ error: "Failed to cancel order: " + rpcErr.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, message: "Order cancelled." });
+  } catch (err) {
+    console.error("DELETE /api/orders error:", err);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
+}
+
+export async function GET(req: NextRequest) {
   if (!globalSupabase) return NextResponse.json({ orders: [], count: 0 });
 
-  const { data, error } = await globalSupabase
-    .from("vault_holdings")
-    .select("symbol, listing_price, user_id, created_at")
-    .eq("status", "listed");
+  const { searchParams } = new URL(req.url);
+  const symbol = searchParams.get('symbol');
+
+  let query = globalSupabase
+    .from("orders")
+    .select("id, symbol, type, price, quantity, user_id, created_at")
+    .eq("status", "open")
+    .order("price", { ascending: false });
+
+  if (symbol) {
+    query = query.eq("symbol", symbol);
+  }
+
+  const { data, error } = await query;
 
   if (error || !data) {
     return NextResponse.json({ orders: [], count: 0 });
   }
 
   const open = data.map((entry) => ({
+    id: entry.id,
     cardName: entry.symbol,
-    side: "sell",
-    priceUsd: entry.listing_price,
-    quantity: "1",
+    side: entry.type,
+    priceUsd: entry.price,
+    quantity: entry.quantity.toString(),
     makerShort: entry.user_id.slice(0, 8) + "…",
     createdAt: new Date(entry.created_at).getTime(),
   }));

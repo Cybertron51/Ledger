@@ -138,6 +138,9 @@ CREATE TABLE IF NOT EXISTS profiles (
   id             UUID        PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
   email          TEXT        NOT NULL UNIQUE,
   name           TEXT,
+  username       TEXT        UNIQUE,
+  favorite_tcgs  TEXT[]      DEFAULT '{}',
+  primary_goal   TEXT,
   cash_balance   DECIMAL(14,2) NOT NULL DEFAULT 25000.00,
   created_at     TIMESTAMPTZ DEFAULT NOW(),
   updated_at     TIMESTAMPTZ DEFAULT NOW()
@@ -147,8 +150,8 @@ CREATE TABLE IF NOT EXISTS profiles (
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users can read own profile" ON profiles;
-CREATE POLICY "Users can read own profile"
-  ON profiles FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Public read profiles"
+  ON profiles FOR SELECT USING (true);
 
 -- Auto-update updated_at for profiles
 DROP TRIGGER IF EXISTS trg_profiles_updated_at ON profiles;
@@ -197,11 +200,12 @@ CREATE TABLE IF NOT EXISTS vault_holdings (
                                  'listed'
                                )),
   
-  acquisition_price DECIMAL(14,2) NOT NULL DEFAULT 0,
-  listing_price     DECIMAL(14,2),                            -- only set when status = 'listed'
+  acquisition_price DECIMAL(14,2) NOT NULL DEFAULT 0 CHECK (acquisition_price >= 0),
+  listing_price     DECIMAL(14,2) CHECK (listing_price > 0),                            -- only set when status = 'listed'
   
   cert_number      TEXT,                                      -- PSA cert number
   image_url        TEXT,                                      -- user uploaded photo or default card image
+  raw_image_url    TEXT,                                      -- original uncropped photo uploaded by user
   
   created_at       TIMESTAMPTZ DEFAULT NOW(),
   updated_at       TIMESTAMPTZ DEFAULT NOW()
@@ -211,6 +215,7 @@ CREATE TABLE IF NOT EXISTS vault_holdings (
 CREATE INDEX IF NOT EXISTS idx_vh_user_id ON vault_holdings(user_id);
 CREATE INDEX IF NOT EXISTS idx_vh_card_id ON vault_holdings(card_id);
 CREATE INDEX IF NOT EXISTS idx_vh_status  ON vault_holdings(status);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_vh_cert_number ON vault_holdings(cert_number) WHERE cert_number IS NOT NULL AND cert_number != '';
 
 -- RLS
 ALTER TABLE vault_holdings ENABLE ROW LEVEL SECURITY;
@@ -219,6 +224,12 @@ DROP POLICY IF EXISTS "Public read vault_holdings" ON vault_holdings;
 
 CREATE POLICY "Public read vault_holdings"
   ON vault_holdings FOR SELECT USING (true);
+
+CREATE POLICY "Users can update own vault_holdings"
+  ON vault_holdings FOR UPDATE USING (auth.uid() = user_id);
+  
+CREATE POLICY "Users can insert own vault_holdings"
+  ON vault_holdings FOR INSERT WITH CHECK (auth.uid() = user_id);
   
 -- Auto-update updated_at for vault_holdings
 DROP TRIGGER IF EXISTS trg_vh_updated_at ON vault_holdings;
@@ -258,25 +269,35 @@ CREATE POLICY "Users can read own trades"
 CREATE OR REPLACE FUNCTION match_order(
   p_buyer_id UUID,
   p_seller_id UUID,
-  p_holding_id UUID,
-  p_price DECIMAL
+  p_holding_id UUID
 ) RETURNS BOOLEAN AS $$
 DECLARE
   v_buyer_balance DECIMAL;
   v_holding_status TEXT;
   v_holding_owner UUID;
   v_symbol TEXT;
+  v_trade_price DECIMAL;
 BEGIN
-  -- 1. Ensure the buyer has enough balance
-  SELECT cash_balance INTO v_buyer_balance FROM profiles WHERE id = p_buyer_id FOR UPDATE;
-  IF v_buyer_balance < p_price THEN
-    RAISE EXCEPTION 'Insufficient funds';
+  -- 0. Ensure caller is the buyer (prevent UI spoofing)
+  IF auth.uid() IS NOT NULL AND auth.uid() != p_buyer_id THEN
+    RAISE EXCEPTION 'Unauthorized: caller must be the buyer';
   END IF;
 
+  -- 1. Ensure the buyer has enough balance
+  SELECT cash_balance INTO v_buyer_balance FROM profiles WHERE id = p_buyer_id FOR UPDATE;
+
   -- 2. Ensure holding is actually listed & belongs to seller
-  SELECT status, user_id, symbol INTO v_holding_status, v_holding_owner, v_symbol
+  SELECT status, user_id, symbol, listing_price INTO v_holding_status, v_holding_owner, v_symbol, v_trade_price
     FROM vault_holdings 
     WHERE id = p_holding_id FOR UPDATE;
+
+  IF v_trade_price IS NULL OR v_trade_price <= 0 THEN
+    RAISE EXCEPTION 'Invalid listing price';
+  END IF;
+
+  IF v_buyer_balance < v_trade_price THEN
+    RAISE EXCEPTION 'Insufficient funds';
+  END IF;
 
   IF v_holding_owner != p_seller_id THEN
     RAISE EXCEPTION 'Holding does not belong to seller';
@@ -287,23 +308,320 @@ BEGIN
   END IF;
 
   -- 3. Deduct from buyer
-  UPDATE profiles SET cash_balance = cash_balance - p_price WHERE id = p_buyer_id;
+  UPDATE profiles SET cash_balance = cash_balance - v_trade_price WHERE id = p_buyer_id;
 
   -- 4. Add to seller
-  UPDATE profiles SET cash_balance = cash_balance + p_price WHERE id = p_seller_id;
+  UPDATE profiles SET cash_balance = cash_balance + v_trade_price WHERE id = p_seller_id;
 
   -- 5. Transfer card ownership & reset status to tradable
   UPDATE vault_holdings 
     SET user_id = p_buyer_id, 
         status = 'tradable', 
         listing_price = NULL,
-        acquisition_price = p_price
+        acquisition_price = v_trade_price
     WHERE id = p_holding_id;
 
   -- 6. Record trade in ledger
   INSERT INTO trades (holding_id, symbol, buyer_id, seller_id, price, executed_at)
-  VALUES (p_holding_id, v_symbol, p_buyer_id, p_seller_id, p_price, NOW());
+  VALUES (p_holding_id, v_symbol, p_buyer_id, p_seller_id, v_trade_price, NOW());
 
   RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ── Storage ─────────────────────────────────────────────────
+-- Set up "scans" bucket for user uploaded images
+
+INSERT INTO storage.buckets (id, name, public) 
+VALUES ('scans', 'scans', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Allow public read access to the scans bucket
+DROP POLICY IF EXISTS "Public Access" ON storage.objects;
+CREATE POLICY "Public Access"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'scans');
+
+-- Allow authenticated users to upload scans
+DROP POLICY IF EXISTS "Authenticated users can upload" ON storage.objects;
+CREATE POLICY "Auth Uploads" 
+  ON storage.objects FOR INSERT 
+  WITH CHECK (
+    auth.role() = 'authenticated' AND
+    bucket_id = 'scans' AND
+    (storage.foldername(name))[1] = auth.uid()::text
+  );
+
+-- Set up "card_images" bucket for PSA API downloaded images
+INSERT INTO storage.buckets (id, name, public)
+VALUES ('card_images', 'card_images', true)
+ON CONFLICT (id) DO NOTHING;
+
+-- Allow public read access to the card_images bucket
+DROP POLICY IF EXISTS "Public Access Card Images" ON storage.objects;
+CREATE POLICY "Public Access Card Images" 
+  ON storage.objects FOR SELECT 
+  USING (bucket_id = 'card_images');
+
+-- Allow authenticated users to upload to the card_images bucket (API handles uploads)
+DROP POLICY IF EXISTS "Auth Uploads Card Images" ON storage.objects;
+CREATE POLICY "Auth Uploads Card Images" 
+  ON storage.objects FOR INSERT 
+  WITH CHECK (
+    auth.role() = 'authenticated' AND
+    bucket_id = 'card_images'
+  );
+
+-- ── Limit Orders (Bids & Asks) ──────────────────────────────
+-- Represents an open intent to buy or sell a card at a specific price
+
+CREATE TABLE IF NOT EXISTS orders (
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      UUID        NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  symbol       TEXT        NOT NULL,
+  type         TEXT        NOT NULL CHECK (type IN ('buy', 'sell')),
+  
+  -- The maximum willing to pay (for bids) or minimum willing to accept (for asks)
+  price        DECIMAL(14,2) NOT NULL CHECK (price > 0),
+  
+  -- The number of items wanted or offered. 
+  -- When match_order runs successfully on a 1-quantity match, this is decremented.
+  -- When quantity hits 0, the order is 'filled'. 
+  quantity     INTEGER     NOT NULL DEFAULT 1 CHECK (quantity > 0),
+  
+  status       TEXT        NOT NULL DEFAULT 'open'
+                           CHECK (status IN ('open', 'filled', 'cancelled')),
+                           
+  created_at   TIMESTAMPTZ DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_orders_symbol ON orders(symbol);
+CREATE INDEX IF NOT EXISTS idx_orders_type_symbol ON orders(type, symbol);
+CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
+CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
+CREATE INDEX IF NOT EXISTS idx_orders_price ON orders(price);
+
+ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Public read orders" ON orders;
+CREATE POLICY "Public read orders"
+  ON orders FOR SELECT USING (true);
+  
+DROP POLICY IF EXISTS "Users can insert own orders" ON orders;
+CREATE POLICY "Users can insert own orders"
+  ON orders FOR INSERT WITH CHECK (auth.uid() = user_id);
+  
+DROP POLICY IF EXISTS "Users can update own orders" ON orders;
+CREATE POLICY "Users can update own orders"
+  ON orders FOR UPDATE USING (auth.uid() = user_id);
+
+DROP TRIGGER IF EXISTS trg_orders_updated_at ON orders;
+CREATE TRIGGER trg_orders_updated_at
+  BEFORE UPDATE ON orders
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ── Order Execution Logic ─────────────────────────────────
+-- This function processes a new order, attempting to immediately match it
+-- against existing open orders on the book.
+-- If unmatched quantity remains, the order stays 'open'.
+
+CREATE OR REPLACE FUNCTION place_order(
+  p_user_id UUID,
+  p_symbol TEXT,
+  p_type TEXT,
+  p_price DECIMAL,
+  p_quantity INTEGER
+) RETURNS UUID AS $$
+DECLARE
+  v_new_order_id UUID;
+  v_rem_qty INTEGER := p_quantity;
+  v_match RECORD;
+  v_holding_id UUID;
+  v_trade_price DECIMAL;
+BEGIN
+  -- 1. Insert the order initially
+  INSERT INTO orders (user_id, symbol, type, price, quantity, status)
+  VALUES (p_user_id, p_symbol, p_type, p_price, p_quantity, 'open')
+  RETURNING id INTO v_new_order_id;
+
+  -- 2. Attempt to match
+  IF p_type = 'buy' THEN
+    -- We are BUYING. We want to find the lowest ASKS (sells) <= our bid
+    FOR v_match IN
+      SELECT o.id, o.user_id, o.price, o.quantity
+      FROM orders o
+      WHERE o.symbol = p_symbol
+        AND o.type = 'sell'
+        AND o.status = 'open'
+        AND o.user_id != p_user_id
+        AND o.price <= p_price
+      ORDER BY o.price ASC, o.created_at ASC
+    LOOP
+      EXIT WHEN v_rem_qty = 0;
+
+      -- Determine price (usually the maker's price, i.e. the existing resting order)
+      v_trade_price := v_match.price;
+
+      -- We need to find an actual physical card (vault_holding) owned by the seller
+      SELECT id INTO v_holding_id
+      FROM vault_holdings
+      WHERE user_id = v_match.user_id
+        AND symbol = p_symbol
+        AND status IN ('tradable', 'in_vault')
+      LIMIT 1 FOR UPDATE SKIP LOCKED;
+
+      -- If the seller doesn't actually have the card anymore, skip this match
+      IF v_holding_id IS NULL THEN
+         CONTINUE;
+      END IF;
+
+      -- Attempt the atomic swap
+      BEGIN
+        -- Deduct from buyer
+        UPDATE profiles SET cash_balance = cash_balance - v_trade_price WHERE id = p_user_id;
+        
+        -- Add to seller
+        UPDATE profiles SET cash_balance = cash_balance + v_trade_price WHERE id = v_match.user_id;
+        
+        -- Transfer card ownership & reset status to tradable
+        UPDATE vault_holdings 
+          SET user_id = p_user_id, 
+              status = 'tradable', 
+              listing_price = NULL,
+              acquisition_price = v_trade_price
+          WHERE id = v_holding_id;
+
+        -- Record trade in ledger
+        INSERT INTO trades (holding_id, symbol, buyer_id, seller_id, price, executed_at)
+        VALUES (v_holding_id, p_symbol, p_user_id, v_match.user_id, v_trade_price, NOW());
+
+        -- Update the last traded price
+        UPDATE prices
+          SET price = v_trade_price,
+              volume_24h = volume_24h + 1
+          WHERE card_id = (SELECT id FROM cards WHERE symbol = p_symbol);
+
+        -- Update order quantities
+        v_rem_qty := v_rem_qty - 1;
+        
+        UPDATE orders SET quantity = quantity - 1 
+        WHERE id = v_match.id;
+
+        -- We only matched 1 unit. The seller's order might have had more, but we only took 1 holding.
+        -- If their order quantity hit 0, mark filled.
+        UPDATE orders SET status = 'filled' WHERE id = v_match.id AND quantity = 0;
+
+      EXCEPTION WHEN OTHERS THEN
+         -- Catch specifically insufficient funds, let it roll back the single trade attempt and break loop
+         IF SQLERRM = 'Insufficient funds' OR SQLSTATE = '23514' THEN
+           RAISE NOTICE 'Insufficient funds for trade';
+           EXIT;
+         END IF;
+         RAISE;
+      END;
+    END LOOP;
+
+  ELSE
+    -- We are SELLING. We want to find the highest BIDS (buys) >= our ask
+    -- This means the seller is hitting a resting bid
+    
+    -- Ensure seller has enough tradable assets before matching
+    SELECT id INTO v_holding_id
+    FROM vault_holdings
+    WHERE user_id = p_user_id
+      AND symbol = p_symbol
+      AND status IN ('tradable', 'in_vault')
+    LIMIT 1 FOR UPDATE SKIP LOCKED;
+
+    IF v_holding_id IS NULL THEN
+      -- Automatically cancel the order if they don't have the assets
+      UPDATE orders SET status = 'cancelled' WHERE id = v_new_order_id;
+      RETURN v_new_order_id;
+    END IF;
+
+
+    FOR v_match IN
+      SELECT o.id, o.user_id, o.price, o.quantity
+      FROM orders o
+      WHERE o.symbol = p_symbol
+        AND o.type = 'buy'
+        AND o.status = 'open'
+        AND o.user_id != p_user_id
+        AND o.price >= p_price
+      ORDER BY o.price DESC, o.created_at ASC
+    LOOP
+      EXIT WHEN v_rem_qty = 0;
+
+      v_trade_price := v_match.price;
+
+      BEGIN
+        -- Deduct from buyer (rested order)
+        UPDATE profiles SET cash_balance = cash_balance - v_trade_price WHERE id = v_match.user_id;
+
+        -- Add to seller (taker order)
+        UPDATE profiles SET cash_balance = cash_balance + v_trade_price WHERE id = p_user_id;
+
+        -- Transfer card ownership & reset status to tradable
+        UPDATE vault_holdings 
+          SET user_id = v_match.user_id, 
+              status = 'tradable', 
+              listing_price = NULL,
+              acquisition_price = v_trade_price
+          WHERE id = v_holding_id;
+
+        -- Record trade in ledger
+        INSERT INTO trades (holding_id, symbol, buyer_id, seller_id, price, executed_at)
+        VALUES (v_holding_id, p_symbol, v_match.user_id, p_user_id, v_trade_price, NOW());
+
+        -- Update the last traded price
+        UPDATE prices
+          SET price = v_trade_price,
+              volume_24h = volume_24h + 1
+          WHERE card_id = (SELECT id FROM cards WHERE symbol = p_symbol);
+
+        -- Update order quantities
+        v_rem_qty := v_rem_qty - 1;
+        
+        UPDATE orders SET quantity = quantity - 1 
+        WHERE id = v_match.id;
+
+        UPDATE orders SET status = 'filled' WHERE id = v_match.id AND quantity = 0;
+
+        -- After matched one card, seller might still want to sell more. 
+        -- Re-query for next holding
+        IF v_rem_qty > 0 THEN
+           v_holding_id := NULL;
+           SELECT id INTO v_holding_id
+           FROM vault_holdings
+           WHERE user_id = p_user_id
+             AND symbol = p_symbol
+             AND status IN ('tradable', 'in_vault')
+           LIMIT 1 FOR UPDATE SKIP LOCKED;
+           
+           IF v_holding_id IS NULL THEN
+             EXIT; -- Stop matching if out of inventory
+           END IF;
+        END IF;
+
+      EXCEPTION WHEN OTHERS THEN
+         IF SQLERRM = 'Insufficient funds' OR SQLSTATE = '23514' THEN
+           -- If buyer doesn't have funds, auto cancel their resting bid and continue to next bid
+           UPDATE orders SET status = 'cancelled' WHERE id = v_match.id;
+           CONTINUE;
+         END IF;
+         RAISE;
+      END;
+    END LOOP;
+  END IF;
+
+  -- 3. Finalize order status
+  IF v_rem_qty = 0 THEN
+    UPDATE orders SET status = 'filled', quantity = 0 WHERE id = v_new_order_id;
+  ELSIF v_rem_qty < p_quantity THEN
+    UPDATE orders SET quantity = v_rem_qty WHERE id = v_new_order_id;
+  END IF;
+
+  RETURN v_new_order_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;

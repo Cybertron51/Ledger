@@ -90,25 +90,12 @@ export function TradePanel({ asset, onRequestSignIn }: TradePanelProps) {
         throw new Error(JSON.stringify(data, null, 2));
       }
 
-      // Update local USD balance optimistically
+      // Update local USD balance optimistically for buys (funds get locked)
       if (isBuy) {
         updateBalance(-total);
-        // Add to portfolio holdings so /portfolio reflects the purchase
-        addHolding({
-          id: `trade-${Date.now()}`,
-          name: asset.name,
-          symbol: asset.symbol,
-          grade: asset.grade,
-          set: asset.set,
-          year: parseInt(asset.set.match(/\d{4}/)?.[0] ?? "2024"),
-          acquisitionPrice: estPrice,
-          status: "tradable",
-          dateDeposited: new Date().toISOString().slice(0, 10),
-          certNumber: `PSA ${Math.floor(10_000_000 + Math.random() * 90_000_000)}`,
-          imageUrl: asset.imageUrl || `/cards/${asset.symbol}.svg`,
-        });
       } else {
-        updateBalance(total);
+        // For sells, the asset gets locked and we could remove it from 'tradable' optimistic UI here,
+        // but a page refresh or context update will handle it.
       }
 
       setResult(data);
@@ -116,7 +103,7 @@ export function TradePanel({ asset, onRequestSignIn }: TradePanelProps) {
       setTimeout(() => {
         setStage("form");
         setResult(null);
-      }, 6000);
+      }, 3000);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Something went wrong");
       setStage("error");
@@ -150,15 +137,13 @@ export function TradePanel({ asset, onRequestSignIn }: TradePanelProps) {
       <div className="flex flex-col items-center gap-3 px-3 py-8 text-center">
         <CheckCircle size={36} strokeWidth={1.5} style={{ color: colors.green }} />
         <p className="text-[14px] font-bold" style={{ color: colors.textPrimary }}>
-          Order Confirmed
+          Order Submitted
         </p>
         <p className="text-[11px]" style={{ color: colors.textSecondary }}>
-          {result.status === "settled"
-            ? "Settled · ownership transferred"
-            : "In order book · awaiting match"}
+          Check your portfolio for order status
         </p>
         <p className="mt-1 text-[10px]" style={{ color: colors.textMuted }}>
-          {result.message}
+          {result.message || "Your order has been routed to the limit order book."}
         </p>
       </div>
     );

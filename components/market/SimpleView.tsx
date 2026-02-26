@@ -151,12 +151,12 @@ function TradeModal({
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Order failed");
 
-      if (side === "buy") updateBalance(-total);
-      else updateBalance(total);
-
+      if (side === "buy") {
+        updateBalance(-total);
+      }
 
       setStage("confirmed");
-      setTimeout(onClose, 4000);
+      setTimeout(onClose, 3000);
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : "Something went wrong");
       setStage("error");

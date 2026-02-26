@@ -15,6 +15,7 @@ import { BarChart2, TrendingUp, Search, Bell, ChevronDown, Camera } from "lucide
 import { cn, formatCurrency } from "@/lib/utils";
 import { colors, layout } from "@/lib/theme";
 import { useAuth } from "@/lib/auth";
+import { SignInModal } from "@/components/auth/SignInModal";
 
 // ─────────────────────────────────────────────────────────
 // Nav links
@@ -45,37 +46,44 @@ function AccountChip() {
     <div className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 rounded-[10px] border px-[10px] py-[6px] transition-colors duration-150 hover:border-[#3E3E3E]"
+        className="flex items-center gap-3 rounded-[12px] border px-[14px] py-[8px] transition-all duration-150 hover:bg-[#1E1E1E]"
         style={{
           borderColor: colors.border,
           background: colors.surface,
+          boxShadow: `0 2px 8px rgba(0,0,0,0.2)`
         }}
       >
-        {/* Balance */}
-        <span className="tabular-nums text-[12px] font-semibold" style={{ color: colors.textSecondary }}>
-          {formatCurrency(user.cashBalance, { compact: true })}
-        </span>
+        {/* Balance info */}
+        <div className="flex flex-col items-end justify-center">
+          <span className="tabular-nums text-[15px] font-bold leading-none tracking-tight" style={{ color: colors.textPrimary }}>
+            {formatCurrency(user.cashBalance)}
+          </span>
+          <span className="mt-[3px] text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.green }}>
+            Available Balance
+          </span>
+        </div>
 
         {/* Divider */}
-        <span className="h-3.5 w-px" style={{ background: colors.border }} />
+        <span className="h-8 w-px" style={{ background: colors.border }} />
 
-        {/* Initials avatar */}
-        <span
-          className="flex h-[22px] w-[22px] items-center justify-center rounded-full text-[10px] font-black"
-          style={{ background: colors.green, color: colors.textInverse }}
-        >
-          {user.initials}
-        </span>
-
-        <ChevronDown
-          size={12}
-          strokeWidth={2.5}
-          style={{
-            color: colors.textMuted,
-            transform: open ? "rotate(180deg)" : "rotate(0deg)",
-            transition: "transform 0.15s ease",
-          }}
-        />
+        {/* Avatar & chevron */}
+        <div className="flex items-center gap-2">
+          <span
+            className="flex h-[28px] w-[28px] items-center justify-center rounded-full text-[12px] font-black shadow-sm"
+            style={{ background: colors.green, color: colors.textInverse }}
+          >
+            {user.initials}
+          </span>
+          <ChevronDown
+            size={14}
+            strokeWidth={3}
+            style={{
+              color: colors.textSecondary,
+              transform: open ? "rotate(180deg)" : "rotate(0deg)",
+              transition: "transform 0.15s ease",
+            }}
+          />
+        </div>
       </button>
 
       {/* Dropdown */}
@@ -116,6 +124,15 @@ function AccountChip() {
               <p className="mt-[3px] tabular-nums text-[16px] font-bold" style={{ color: colors.textPrimary }}>
                 {formatCurrency(user.cashBalance)}
               </p>
+
+              <div className="mt-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
+                  Locked for Orders
+                </p>
+                <p className="mt-[3px] tabular-nums text-[13px] font-medium" style={{ color: colors.textSecondary }}>
+                  {formatCurrency(user.lockedBalance || 0)}
+                </p>
+              </div>
             </div>
 
             {/* Actions */}
@@ -159,6 +176,7 @@ export function Navigation() {
   const pathname = usePathname();
   const router = useRouter();
   const { isAuthenticated } = useAuth();
+  const [showSignIn, setShowSignIn] = useState(false);
 
   return (
     <>
@@ -267,16 +285,26 @@ export function Navigation() {
           {isAuthenticated ? (
             <AccountChip />
           ) : (
-            <button
-              onClick={() => router.push("/onboarding")}
-              className="rounded-[10px] px-4 py-[7px] text-[13px] font-semibold transition-all duration-150 active:scale-[0.98]"
-              style={{ background: colors.green, color: colors.textInverse }}
-            >
-              Sign In
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowSignIn(true)}
+                className="rounded-[10px] px-4 py-[7px] text-[13px] font-semibold transition-all duration-150"
+                style={{ color: colors.textPrimary }}
+              >
+                Sign In
+              </button>
+              <button
+                onClick={() => router.push("/sign-up")}
+                className="rounded-[10px] px-4 py-[7px] text-[13px] font-semibold transition-all duration-150 active:scale-[0.98]"
+                style={{ background: colors.green, color: colors.textInverse }}
+              >
+                Sign Up
+              </button>
+            </div>
           )}
         </div>
       </header>
+      {showSignIn && <SignInModal onClose={() => setShowSignIn(false)} />}
     </>
   );
 }

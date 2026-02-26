@@ -1,9 +1,9 @@
 "use client";
 
 /**
- * SignInModal — Branded entry point for account creation / sign-in.
+ * SignInModal — Branded entry point for sign-in.
  *
- * Clicking any option hands off to the authentication provider.
+ * Hand off to the authentication provider.
  */
 
 import { useState } from "react";
@@ -17,7 +17,6 @@ interface SignInModalProps {
 }
 
 export function SignInModal({ onClose }: SignInModalProps) {
-  const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -32,21 +31,10 @@ export function SignInModal({ onClose }: SignInModalProps) {
     setErrorMsg("");
 
     try {
-      if (isSignUp) {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: { data: { name: email.split("@")[0] } }
-        });
-        if (error) throw error;
-        onClose();
-        router.refresh();
-      } else {
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) throw error;
-        onClose();
-        router.refresh();
-      }
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      onClose();
+      router.refresh();
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to authenticate.");
     } finally {
@@ -85,7 +73,7 @@ export function SignInModal({ onClose }: SignInModalProps) {
           style={{ background: colors.green }}
         >
           <span className="text-[16px] font-black" style={{ color: colors.textInverse }}>
-            L
+            t
           </span>
         </div>
 
@@ -93,7 +81,7 @@ export function SignInModal({ onClose }: SignInModalProps) {
           className="text-[20px] font-bold tracking-tight"
           style={{ color: colors.textPrimary }}
         >
-          {isSignUp ? "Create an account" : "Sign in to tash"}
+          Sign in to tash
         </h2>
         <p className="mt-1 text-[13px]" style={{ color: colors.textSecondary }}>
           Trade and manage your card portfolio.
@@ -138,19 +126,19 @@ export function SignInModal({ onClose }: SignInModalProps) {
             className="mt-2 flex w-full items-center justify-center gap-2 rounded-[10px] py-[11px] text-[13px] font-bold transition-all duration-150 active:scale-[0.98] disabled:opacity-70 disabled:active:scale-100"
             style={{ background: colors.green, color: colors.textInverse }}
           >
-            {loading ? <Loader2 size={16} className="animate-spin" /> : (isSignUp ? "Sign Up" : "Sign In")}
+            {loading ? <Loader2 size={16} className="animate-spin" /> : "Sign In"}
           </button>
         </form>
 
         <p className="mt-5 text-center text-[12px]" style={{ color: colors.textMuted }}>
-          {isSignUp ? "Already have an account?" : "Don't have an account?"}{" "}
+          Don't have an account?{" "}
           <button
             type="button"
-            onClick={() => { setIsSignUp(!isSignUp); setErrorMsg(""); }}
+            onClick={() => { onClose(); router.push("/sign-up"); }}
             className="font-semibold transition-colors hover:text-white"
             style={{ color: colors.green }}
           >
-            {isSignUp ? "Sign In" : "Sign Up"}
+            Sign Up
           </button>
         </p>
 

@@ -62,7 +62,7 @@ interface DepositForm {
 // ─────────────────────────────────────────────────────────
 
 export default function PortfolioPage() {
-  const { holdings, addHolding, updateHolding } = usePortfolio();
+  const { holdings, openOrders, addHolding, updateHolding, removeOpenOrder } = usePortfolio();
   const { isAuthenticated, session, user, updateBalance } = useAuth();
   const [assets, setAssets] = useState<AssetData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -144,15 +144,30 @@ export default function PortfolioPage() {
     if (isNaN(price)) return;
 
     const holding = holdings.find((h) => h.id === modalState.holdingId);
-    if (!holding || !user) return;
+    if (!holding || !user || !session) return;
 
     try {
-      await updateVaultHoldingStatus(modalState.holdingId, {
-        status: "listed",
-        listingPrice: price
+      // Route through the CLOB — this calls place_order RPC with holding_id
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({
+          symbol: holding.symbol,
+          priceUsd: price,
+          isBuy: false,
+          quantity: 1,
+        }),
       });
 
-      // Update local state if successful
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to list");
+      }
+
+      // Update local state to reflect the listing
       updateHolding(modalState.holdingId, {
         status: "listed",
         listingPrice: price,
@@ -176,13 +191,39 @@ export default function PortfolioPage() {
 
   async function handleCancelListing(id: string) {
     const holding = holdings.find((h) => h.id === id);
-    if (!holding || !user) return;
+    if (!holding || !user || !session) return;
 
     try {
-      await updateVaultHoldingStatus(id, {
-        status: "tradable",
-        listingPrice: null
-      });
+      // Find the open sell order for this holding
+      const matchingOrder = openOrders.find(
+        (o) => o.holdingId === id && o.type === "sell"
+      );
+
+      if (matchingOrder) {
+        // Cancel via the CLOB — this calls cancel_order RPC
+        const res = await fetch("/api/orders", {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({ orderId: matchingOrder.id }),
+        });
+
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || "Failed to cancel");
+        }
+
+        removeOpenOrder(matchingOrder.id);
+      } else {
+        // Fallback: directly revert vault status if no matching order found
+        // (covers edge cases where listing was created before CLOB migration)
+        await updateVaultHoldingStatus(id, {
+          status: "tradable",
+          listingPrice: null
+        });
+      }
 
       // Revert status
       updateHolding(id, { status: "tradable", listingPrice: undefined });
@@ -581,10 +622,29 @@ export default function PortfolioPage() {
         {selected === null ? (
           <PortfolioOverview
             holdings={holdings}
+            openOrders={openOrders}
             priceMap={priceMap}
             assets={assets}
             activities={activities}
             onSelectCard={setSelectedId}
+            onCancelOrder={async (id) => {
+              try {
+                const res = await fetch("/api/orders", {
+                  method: "DELETE",
+                  headers: { "Content-Type": "application/json", Authorization: `Bearer ${session?.access_token}` },
+                  body: JSON.stringify({ orderId: id })
+                });
+                if (!res.ok) throw new Error("Failed to cancel");
+                removeOpenOrder(id);
+                // We could also optimistically restore balance/holding status here,
+                // but for simplicity the page refresh or context refetch will fix it eventually.
+                // Best would be to call a context method that does a full refetch, but let's 
+                // just rely on removeOpenOrder for the UI update of the order list.
+              } catch (e) {
+                console.error(e);
+                alert("Failed to cancel order");
+              }
+            }}
           />
         ) : (
           <DetailPanel
@@ -663,14 +723,17 @@ export default function PortfolioPage() {
 
 interface PortfolioOverviewProps {
   holdings: VaultHolding[];
+  openOrders: import("@/lib/portfolio-context").OpenOrder[];
   priceMap: Record<string, number>;
   assets: AssetData[];
   activities: Activity[];
   onSelectCard: (id: string) => void;
+  onCancelOrder: (id: string) => void;
 }
 
-function PortfolioOverview({ holdings, priceMap, assets, activities, onSelectCard }: PortfolioOverviewProps) {
+function PortfolioOverview({ holdings, openOrders, priceMap, assets, activities, onSelectCard, onCancelOrder }: PortfolioOverviewProps) {
   const [range, setRange] = useState<TimeRange>("1M");
+  const [portfolioTab, setPortfolioTab] = useState<"holdings" | "orders">("holdings");
 
   // ── Portfolio-level stats ──────────────────────────────
   const totalValue = holdings.reduce((sum, h) => sum + (priceMap[h.symbol] ?? 0), 0);
@@ -740,7 +803,7 @@ function PortfolioOverview({ holdings, priceMap, assets, activities, onSelectCar
   return (
     <div className="p-6">
       {/* ── Hero ── */}
-      <div className="mb-6">
+      <div className="mb-4">
         <p className="mb-1 text-[11px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
           Total Portfolio Value
         </p>
@@ -767,143 +830,146 @@ function PortfolioOverview({ holdings, priceMap, assets, activities, onSelectCar
         </div>
       </div>
 
-      {/* ── Stats grid ── */}
+      {/* ── Tab Bar ── */}
       <div
-        className="mb-5 grid grid-cols-4 overflow-hidden rounded-[10px] border"
-        style={{ borderColor: colors.border, background: colors.surface }}
+        className="mb-5 flex rounded-[10px] p-[3px]"
+        style={{ background: colors.surfaceOverlay }}
       >
-        <div className="border-r" style={{ borderColor: colors.borderSubtle }}>
-          {statCell("Cost Basis", formatCurrency(totalCost))}
-        </div>
-        <div className="border-r" style={{ borderColor: colors.borderSubtle }}>
-          {statCell("Holdings", `${holdings.length} cards`)}
-        </div>
-        <div className="border-r" style={{ borderColor: colors.borderSubtle }}>
-          {statCell("In Vault", `${inVault} · ${listed} listed`)}
-        </div>
-        {statCell(
-          "All-Time P&L",
-          `${isGain ? "+" : ""}${totalGainPct.toFixed(1)}%`,
-          isGain ? colors.green : colors.red
-        )}
+        {(["holdings", "orders"] as const).map((tab) => {
+          const isActive = portfolioTab === tab;
+          const label = tab === "holdings" ? "Holdings" : `Open Orders${openOrders.length > 0 ? ` (${openOrders.length})` : ""}`;
+          return (
+            <button
+              key={tab}
+              onClick={() => setPortfolioTab(tab)}
+              className="flex-1 rounded-[8px] py-[8px] text-[12px] font-semibold transition-all duration-150"
+              style={{
+                background: isActive ? colors.surface : "transparent",
+                color: isActive ? colors.textPrimary : colors.textMuted,
+                boxShadow: isActive ? "0 1px 3px rgba(0,0,0,0.3)" : "none",
+              }}
+            >
+              {label}
+            </button>
+          );
+        })}
       </div>
 
-      {/* ── Portfolio performance chart ── */}
-      <div className="mb-6">
-        <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
-          Portfolio Performance
-        </p>
-        <PriceChart data={chartData} isUp={isGain} range={range} onRangeChange={setRange} />
-      </div>
+      {portfolioTab === "orders" ? (
+        /* ── Open Orders Tab ── */
+        <OpenOrdersView openOrders={openOrders} onCancelOrder={onCancelOrder} />
+      ) : (
+        <>
 
-      {/* ── Bottom two-column section ── */}
-      <div className="grid grid-cols-2 gap-5">
-        {/* Category breakdown */}
-        <div
-          className="rounded-[10px] border p-4"
-          style={{ borderColor: colors.border, background: colors.surface }}
-        >
-          <p className="mb-4 text-[11px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
-            By Category
-          </p>
-          {categories.length === 0 ? (
-            <p className="text-[12px]" style={{ color: colors.textMuted }}>No holdings</p>
-          ) : (
-            <div className="flex flex-col gap-3">
-              {categories.map(([cat, val]) => {
-                const pct = (val / maxCatValue) * 100;
-                const portfolioPct = totalValue > 0 ? (val / totalValue) * 100 : 0;
-                return (
-                  <div key={cat}>
-                    <div className="mb-1 flex items-center justify-between">
-                      <span className="text-[12px] font-medium" style={{ color: colors.textPrimary }}>{cat}</span>
-                      <div className="flex items-center gap-2">
-                        <span className="tabular-nums text-[12px] font-semibold" style={{ color: colors.textPrimary }}>
-                          {formatCurrency(val)}
-                        </span>
-                        <span className="tabular-nums text-[11px]" style={{ color: colors.textMuted }}>
-                          {portfolioPct.toFixed(0)}%
-                        </span>
-                      </div>
-                    </div>
-                    <div className="h-[6px] w-full rounded-full" style={{ background: colors.surfaceOverlay }}>
-                      <div
-                        className="h-full rounded-full"
-                        style={{ width: `${pct}%`, background: colors.green, transition: "width 0.4s ease" }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-
-              {/* Status breakdown */}
-              <div className="mt-2 border-t pt-3" style={{ borderColor: colors.border }}>
-                <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>Status</p>
-                <div className="flex gap-3">
-                  {[
-                    { label: "In Vault", count: inVault, color: colors.green },
-                    { label: "Listed", count: listed, color: colors.textSecondary },
-                    { label: "In Transit", count: inTransit, color: "#F5C842" },
-                  ].map(({ label, count, color }) => (
-                    <div key={label} className="flex items-center gap-1">
-                      <div className="h-[6px] w-[6px] rounded-full" style={{ background: color }} />
-                      <span className="text-[11px]" style={{ color: colors.textMuted }}>{label}</span>
-                      <span className="tabular-nums text-[11px] font-semibold" style={{ color: colors.textPrimary }}>{count}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+          {/* ── Stats grid ── */}
+          <div
+            className="mb-5 grid grid-cols-4 overflow-hidden rounded-[10px] border"
+            style={{ borderColor: colors.border, background: colors.surface }}
+          >
+            <div className="border-r" style={{ borderColor: colors.borderSubtle }}>
+              {statCell("Cost Basis", formatCurrency(totalCost))}
             </div>
-          )}
-        </div>
+            <div className="border-r" style={{ borderColor: colors.borderSubtle }}>
+              {statCell("Holdings", `${holdings.length} cards`)}
+            </div>
+            <div className="border-r" style={{ borderColor: colors.borderSubtle }}>
+              {statCell("In Vault", `${inVault} · ${listed} listed`)}
+            </div>
+            {statCell(
+              "All-Time P&L",
+              `${isGain ? "+" : ""}${totalGainPct.toFixed(1)}%`,
+              isGain ? colors.green : colors.red
+            )}
+          </div>
 
-        {/* Top performers */}
-        <div
-          className="rounded-[10px] border p-4"
-          style={{ borderColor: colors.border, background: colors.surface }}
-        >
-          <p className="mb-4 text-[11px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
-            Top Performers
-          </p>
+          {/* ── Portfolio performance chart ── */}
+          <div className="mb-6">
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
+              Portfolio Performance
+            </p>
+            <PriceChart data={chartData} isUp={isGain} range={range} onRangeChange={setRange} />
+          </div>
 
-          {topGainers.length === 0 ? (
-            <p className="text-[12px]" style={{ color: colors.textMuted }}>No data</p>
-          ) : (
-            <div className="flex flex-col gap-2">
-              {topGainers.map((h) => (
-                <button
-                  key={h.id}
-                  onClick={() => onSelectCard(h.id)}
-                  className="flex items-center justify-between rounded-[8px] px-3 py-2 text-left transition-colors hover:bg-[#2a2a2a]"
-                  style={{ background: "transparent" }}
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-[12px] font-semibold" style={{ color: colors.textPrimary }}>
-                      {h.name}
-                    </p>
-                    <p className="text-[10px] uppercase tracking-wider" style={{ color: colors.textMuted }}>
-                      PSA {h.grade}
-                    </p>
+          {/* ── Bottom two-column section ── */}
+          <div className="grid grid-cols-2 gap-5">
+            {/* Category breakdown */}
+            <div
+              className="rounded-[10px] border p-4"
+              style={{ borderColor: colors.border, background: colors.surface }}
+            >
+              <p className="mb-4 text-[11px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
+                By Category
+              </p>
+              {categories.length === 0 ? (
+                <p className="text-[12px]" style={{ color: colors.textMuted }}>No holdings</p>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {categories.map(([cat, val]) => {
+                    const pct = (val / maxCatValue) * 100;
+                    const portfolioPct = totalValue > 0 ? (val / totalValue) * 100 : 0;
+                    return (
+                      <div key={cat}>
+                        <div className="mb-1 flex items-center justify-between">
+                          <span className="text-[12px] font-medium" style={{ color: colors.textPrimary }}>{cat}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="tabular-nums text-[12px] font-semibold" style={{ color: colors.textPrimary }}>
+                              {formatCurrency(val)}
+                            </span>
+                            <span className="tabular-nums text-[11px]" style={{ color: colors.textMuted }}>
+                              {portfolioPct.toFixed(0)}%
+                            </span>
+                          </div>
+                        </div>
+                        <div className="h-[6px] w-full rounded-full" style={{ background: colors.surfaceOverlay }}>
+                          <div
+                            className="h-full rounded-full"
+                            style={{ width: `${pct}%`, background: colors.green, transition: "width 0.4s ease" }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Status breakdown */}
+                  <div className="mt-2 border-t pt-3" style={{ borderColor: colors.border }}>
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>Status</p>
+                    <div className="flex gap-3">
+                      {[
+                        { label: "In Vault", count: inVault, color: colors.green },
+                        { label: "Listed", count: listed, color: colors.textSecondary },
+                        { label: "In Transit", count: inTransit, color: "#F5C842" },
+                      ].map(({ label, count, color }) => (
+                        <div key={label} className="flex items-center gap-1">
+                          <div className="h-[6px] w-[6px] rounded-full" style={{ background: color }} />
+                          <span className="text-[11px]" style={{ color: colors.textMuted }}>{label}</span>
+                          <span className="tabular-nums text-[11px] font-semibold" style={{ color: colors.textPrimary }}>{count}</span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div className="ml-2 flex flex-col items-end">
-                    <span className="tabular-nums text-[12px] font-bold" style={{ color: colors.green }}>
-                      +{h.gainPct.toFixed(1)}%
-                    </span>
-                    <span className="tabular-nums text-[10px]" style={{ color: colors.green }}>
-                      +{formatCurrency(h.gain)}
-                    </span>
-                  </div>
-                </button>
-              ))}
+                </div>
+              )}
+            </div>
 
-              {topLosers.length > 0 && (
-                <>
-                  <div className="my-1 border-t" style={{ borderColor: colors.border }} />
-                  {topLosers.map((h) => (
+            {/* Top performers */}
+            <div
+              className="rounded-[10px] border p-4"
+              style={{ borderColor: colors.border, background: colors.surface }}
+            >
+              <p className="mb-4 text-[11px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
+                Top Performers
+              </p>
+
+              {topGainers.length === 0 ? (
+                <p className="text-[12px]" style={{ color: colors.textMuted }}>No data</p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {topGainers.map((h) => (
                     <button
                       key={h.id}
                       onClick={() => onSelectCard(h.id)}
                       className="flex items-center justify-between rounded-[8px] px-3 py-2 text-left transition-colors hover:bg-[#2a2a2a]"
+                      style={{ background: "transparent" }}
                     >
                       <div className="min-w-0">
                         <p className="truncate text-[12px] font-semibold" style={{ color: colors.textPrimary }}>
@@ -914,134 +980,287 @@ function PortfolioOverview({ holdings, priceMap, assets, activities, onSelectCar
                         </p>
                       </div>
                       <div className="ml-2 flex flex-col items-end">
-                        <span className="tabular-nums text-[12px] font-bold" style={{ color: colors.red }}>
-                          {h.gainPct.toFixed(1)}%
+                        <span className="tabular-nums text-[12px] font-bold" style={{ color: colors.green }}>
+                          +{h.gainPct.toFixed(1)}%
                         </span>
-                        <span className="tabular-nums text-[10px]" style={{ color: colors.red }}>
-                          {formatCurrency(h.gain)}
+                        <span className="tabular-nums text-[10px]" style={{ color: colors.green }}>
+                          +{formatCurrency(h.gain)}
                         </span>
                       </div>
                     </button>
                   ))}
-                </>
+
+                  {topLosers.length > 0 && (
+                    <>
+                      <div className="my-1 border-t" style={{ borderColor: colors.border }} />
+                      {topLosers.map((h) => (
+                        <button
+                          key={h.id}
+                          onClick={() => onSelectCard(h.id)}
+                          className="flex items-center justify-between rounded-[8px] px-3 py-2 text-left transition-colors hover:bg-[#2a2a2a]"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-[12px] font-semibold" style={{ color: colors.textPrimary }}>
+                              {h.name}
+                            </p>
+                            <p className="text-[10px] uppercase tracking-wider" style={{ color: colors.textMuted }}>
+                              PSA {h.grade}
+                            </p>
+                          </div>
+                          <div className="ml-2 flex flex-col items-end">
+                            <span className="tabular-nums text-[12px] font-bold" style={{ color: colors.red }}>
+                              {h.gainPct.toFixed(1)}%
+                            </span>
+                            <span className="tabular-nums text-[10px]" style={{ color: colors.red }}>
+                              {formatCurrency(h.gain)}
+                            </span>
+                          </div>
+                        </button>
+                      ))}
+                    </>
+                  )}
+                </div>
               )}
             </div>
-          )}
-        </div>
-      </div>
-
-      {/* ── All holdings table ── */}
-      <div className="mt-5 rounded-[10px] border overflow-hidden" style={{ borderColor: colors.border }}>
-        <div
-          className="grid grid-cols-5 border-b px-4 py-2"
-          style={{ borderColor: colors.border, background: colors.surface }}
-        >
-          {["Card", "Grade", "Current Value", "Cost Basis", "P&L"].map((h) => (
-            <span key={h} className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
-              {h}
-            </span>
-          ))}
-        </div>
-        {holdings.map((h) => {
-          const cur = priceMap[h.symbol] ?? 0;
-          const gain = cur - h.acquisitionPrice;
-          const gainPct = (gain / h.acquisitionPrice) * 100;
-          const isG = gain >= 0;
-          const gradeColor = psaGradeColor[h.grade as 8 | 9 | 10] ?? colors.textSecondary;
-          return (
-            <button
-              key={h.id}
-              onClick={() => onSelectCard(h.id)}
-              className="grid grid-cols-5 w-full border-b px-4 py-3 text-left transition-colors hover:bg-[#0f0f0f]"
-              style={{ borderColor: colors.borderSubtle }}
-            >
-              <div className="min-w-0 pr-2">
-                <p className="truncate text-[12px] font-semibold" style={{ color: colors.textPrimary }}>{h.name}</p>
-                <p className="text-[10px] uppercase tracking-wider" style={{ color: colors.textMuted }}>{h.set}</p>
-              </div>
-              <div>
-                <span
-                  className="inline-block rounded-[5px] px-[6px] py-[2px] text-[10px] font-bold tracking-wide"
-                  style={{ background: `${gradeColor}18`, border: `1px solid ${gradeColor}44`, color: gradeColor }}
-                >
-                  PSA {h.grade}
-                </span>
-              </div>
-              <span className="tabular-nums text-[13px] font-bold self-center" style={{ color: colors.textPrimary }}>
-                {formatCurrency(cur)}
-              </span>
-              <span className="tabular-nums text-[12px] self-center" style={{ color: colors.textSecondary }}>
-                {formatCurrency(h.acquisitionPrice)}
-              </span>
-              <div className="self-center">
-                <p className="tabular-nums text-[12px] font-semibold" style={{ color: isG ? colors.green : colors.red }}>
-                  {isG ? "+" : ""}{formatCurrency(gain)}
-                </p>
-                <p className="tabular-nums text-[10px]" style={{ color: isG ? colors.green : colors.red }}>
-                  {isG ? "+" : ""}{gainPct.toFixed(1)}%
-                </p>
-              </div>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* ── Activity Feed ── */}
-      {activities.length > 0 && (
-        <div className="mt-5 rounded-[10px] border overflow-hidden" style={{ borderColor: colors.border }}>
-          <div
-            className="border-b px-4 py-2"
-            style={{ borderColor: colors.border, background: colors.surface }}
-          >
-            <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
-              Recent Activity
-            </span>
           </div>
-          {[...activities].reverse().slice(0, 10).map((act) => {
-            const iconConfig = {
-              deposit: { icon: <ArrowDownLeft size={12} />, color: colors.green, bg: colors.greenMuted },
-              listed: { icon: <Tag size={12} />, color: colors.gold, bg: colors.goldMuted },
-              cancelled: { icon: <X size={12} />, color: colors.textMuted, bg: colors.surfaceOverlay },
-              withdrawn: { icon: <ArrowUpRight size={12} />, color: colors.red, bg: "rgba(255,59,48,0.12)" },
-              shipped: { icon: <ArrowUpRight size={12} />, color: "#F5C842", bg: "rgba(245,200,66,0.15)" },
-            }[act.type];
 
-            const secondsAgo = Math.floor((Date.now() - act.timestamp.getTime()) / 1000);
-            const timeLabel =
-              secondsAgo < 60 ? "just now"
-                : secondsAgo < 3600 ? `${Math.floor(secondsAgo / 60)}m ago`
-                  : secondsAgo < 86400 ? `${Math.floor(secondsAgo / 3600)}h ago`
-                    : `${Math.floor(secondsAgo / 86400)}d ago`;
-
-            const description =
-              act.type === "deposit" ? `Deposited ${act.cardName} PSA ${act.grade} at ${formatCurrency(act.amount)}`
-                : act.type === "listed" ? `${act.cardName} PSA ${act.grade} listed for ${formatCurrency(act.amount)}`
-                  : act.type === "cancelled" ? `Listing cancelled for ${act.cardName} PSA ${act.grade}`
-                    : `${act.cardName} PSA ${act.grade} withdrawal requested`;
-
-            return (
-              <div
-                key={act.id}
-                className="flex items-center justify-between border-b px-4 py-3 last:border-b-0"
-                style={{ borderColor: colors.borderSubtle }}
-              >
-                <div className="flex items-center gap-3">
-                  <div
-                    className="flex items-center justify-center rounded-full shrink-0"
-                    style={{ width: 26, height: 26, background: iconConfig.bg, color: iconConfig.color }}
-                  >
-                    {iconConfig.icon}
+          {/* ── All holdings table ── */}
+          <div className="mt-5 rounded-[10px] border overflow-hidden" style={{ borderColor: colors.border }}>
+            <div
+              className="grid grid-cols-5 border-b px-4 py-2"
+              style={{ borderColor: colors.border, background: colors.surface }}
+            >
+              {["Card", "Grade", "Current Value", "Cost Basis", "P&L"].map((h) => (
+                <span key={h} className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
+                  {h}
+                </span>
+              ))}
+            </div>
+            {holdings.map((h) => {
+              const cur = priceMap[h.symbol] ?? 0;
+              const gain = cur - h.acquisitionPrice;
+              const gainPct = (gain / h.acquisitionPrice) * 100;
+              const isG = gain >= 0;
+              const gradeColor = psaGradeColor[h.grade as 8 | 9 | 10] ?? colors.textSecondary;
+              return (
+                <button
+                  key={h.id}
+                  onClick={() => onSelectCard(h.id)}
+                  className="grid grid-cols-5 w-full border-b px-4 py-3 text-left transition-colors hover:bg-[#0f0f0f]"
+                  style={{ borderColor: colors.borderSubtle }}
+                >
+                  <div className="min-w-0 pr-2">
+                    <p className="truncate text-[12px] font-semibold" style={{ color: colors.textPrimary }}>{h.name}</p>
+                    <p className="text-[10px] uppercase tracking-wider" style={{ color: colors.textMuted }}>{h.set}</p>
                   </div>
-                  <span className="text-[12px]" style={{ color: colors.textSecondary }}>{description}</span>
-                </div>
-                <span className="ml-4 shrink-0 text-[11px] tabular-nums" style={{ color: colors.textMuted }}>
-                  {timeLabel}
+                  <div>
+                    <span
+                      className="inline-block rounded-[5px] px-[6px] py-[2px] text-[10px] font-bold tracking-wide"
+                      style={{ background: `${gradeColor}18`, border: `1px solid ${gradeColor}44`, color: gradeColor }}
+                    >
+                      PSA {h.grade}
+                    </span>
+                  </div>
+                  <span className="tabular-nums text-[13px] font-bold self-center" style={{ color: colors.textPrimary }}>
+                    {formatCurrency(cur)}
+                  </span>
+                  <span className="tabular-nums text-[12px] self-center" style={{ color: colors.textSecondary }}>
+                    {formatCurrency(h.acquisitionPrice)}
+                  </span>
+                  <div className="self-center">
+                    <p className="tabular-nums text-[12px] font-semibold" style={{ color: isG ? colors.green : colors.red }}>
+                      {isG ? "+" : ""}{formatCurrency(gain)}
+                    </p>
+                    <p className="tabular-nums text-[10px]" style={{ color: isG ? colors.green : colors.red }}>
+                      {isG ? "+" : ""}{gainPct.toFixed(1)}%
+                    </p>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* ── Open Orders ── */}
+          {openOrders.length > 0 && (
+            <div className="mt-5 rounded-[10px] border overflow-hidden" style={{ borderColor: colors.border }}>
+              <div
+                className="grid grid-cols-4 border-b px-4 py-2"
+                style={{ borderColor: colors.border, background: colors.surface }}
+              >
+                {["Card", "Order Type", "Price", ""].map((h) => (
+                  <span key={h} className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
+                    {h}
+                  </span>
+                ))}
+              </div>
+              {openOrders.map((o) => {
+                const gradeColor = psaGradeColor[o.grade as 8 | 9 | 10] ?? colors.textSecondary;
+                return (
+                  <div
+                    key={o.id}
+                    className="grid grid-cols-4 w-full border-b px-4 py-3 text-left transition-colors hover:bg-[#0f0f0f]"
+                    style={{ borderColor: colors.borderSubtle }}
+                  >
+                    <div className="min-w-0 pr-2">
+                      <p className="truncate text-[12px] font-semibold" style={{ color: colors.textPrimary }}>{o.cardName}</p>
+                      <div>
+                        <span
+                          className="inline-block rounded-[5px] mt-1 px-[6px] py-[2px] text-[10px] font-bold tracking-wide"
+                          style={{ background: `${gradeColor}18`, border: `1px solid ${gradeColor}44`, color: gradeColor }}
+                        >
+                          PSA {o.grade}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="self-center">
+                      <span
+                        className="tabular-nums text-[12px] font-semibold uppercase rounded-[6px] px-2 py-1"
+                        style={{
+                          color: o.type === "buy" ? colors.green : colors.red,
+                          background: o.type === "buy" ? colors.greenMuted : "rgba(255, 59, 48, 0.15)"
+                        }}
+                      >
+                        {o.type === "buy" ? "Limit Buy" : "Limit Sell"}
+                      </span>
+                    </div>
+                    <div className="self-center">
+                      <span className="tabular-nums text-[13px] font-bold" style={{ color: colors.textPrimary }}>
+                        {formatCurrency(o.price)}
+                      </span>
+                      <span className="tabular-nums text-[11px] ml-1" style={{ color: colors.textMuted }}>
+                        x{o.quantity}
+                      </span>
+                    </div>
+                    <div className="self-center text-right">
+                      <button
+                        onClick={() => onCancelOrder(o.id)}
+                        className="text-[12px] font-semibold transition-colors hover:text-red-400"
+                        style={{ color: colors.textMuted }}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {/* ── Activity Feed ── */}
+          {activities.length > 0 && (
+            <div className="mt-5 rounded-[10px] border overflow-hidden" style={{ borderColor: colors.border }}>
+              <div
+                className="border-b px-4 py-2"
+                style={{ borderColor: colors.border, background: colors.surface }}
+              >
+                <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
+                  Recent Activity
                 </span>
               </div>
-            );
-          })}
-        </div>
+              {[...activities].reverse().slice(0, 10).map((act) => {
+                const iconConfig = {
+                  deposit: { icon: <ArrowDownLeft size={12} />, color: colors.green, bg: colors.greenMuted },
+                  listed: { icon: <Tag size={12} />, color: colors.gold, bg: colors.goldMuted },
+                  cancelled: { icon: <X size={12} />, color: colors.textMuted, bg: colors.surfaceOverlay },
+                  withdrawn: { icon: <ArrowUpRight size={12} />, color: colors.red, bg: "rgba(255,59,48,0.12)" },
+                  shipped: { icon: <ArrowUpRight size={12} />, color: "#F5C842", bg: "rgba(245,200,66,0.15)" },
+                }[act.type];
+
+                const secondsAgo = Math.floor((Date.now() - act.timestamp.getTime()) / 1000);
+                const timeLabel =
+                  secondsAgo < 60 ? "just now"
+                    : secondsAgo < 3600 ? `${Math.floor(secondsAgo / 60)}m ago`
+                      : secondsAgo < 86400 ? `${Math.floor(secondsAgo / 3600)}h ago`
+                        : `${Math.floor(secondsAgo / 86400)}d ago`;
+
+                const description =
+                  act.type === "deposit" ? `Deposited ${act.cardName} PSA ${act.grade} at ${formatCurrency(act.amount)}`
+                    : act.type === "listed" ? `${act.cardName} PSA ${act.grade} listed for ${formatCurrency(act.amount)}`
+                      : act.type === "cancelled" ? `Listing cancelled for ${act.cardName} PSA ${act.grade}`
+                        : `${act.cardName} PSA ${act.grade} withdrawal requested`;
+
+                return (
+                  <div
+                    key={act.id}
+                    className="flex items-center justify-between border-b px-4 py-3 last:border-b-0"
+                    style={{ borderColor: colors.borderSubtle }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="flex items-center justify-center rounded-full shrink-0"
+                        style={{ width: 26, height: 26, background: iconConfig.bg, color: iconConfig.color }}
+                      >
+                        {iconConfig.icon}
+                      </div>
+                      <span className="text-[12px]" style={{ color: colors.textSecondary }}>{description}</span>
+                    </div>
+                    <span className="ml-4 shrink-0 text-[11px] tabular-nums" style={{ color: colors.textMuted }}>
+                      {timeLabel}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+      </>
       )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// Open Orders View (tab content)
+// ─────────────────────────────────────────────────────────
+
+function OpenOrdersView({ openOrders, onCancelOrder }: { openOrders: import("@/lib/portfolio-context").OpenOrder[]; onCancelOrder: (id: string) => void }) {
+  if (openOrders.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16" style={{ color: colors.textMuted }}>
+        <p className="text-[14px] font-semibold">No open orders</p>
+        <p className="mt-1 text-[12px]">Your limit buy and sell orders will appear here.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-[10px] border overflow-hidden" style={{ borderColor: colors.border }}>
+      {/* Header */}
+      <div className="grid grid-cols-[1fr_90px_90px_60px_80px] gap-2 px-4 py-2 border-b" style={{ borderColor: colors.borderSubtle, background: colors.surface }}>
+        {["Card", "Side", "Price", "Qty", ""].map((h) => (
+          <span key={h} className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>{h}</span>
+        ))}
+      </div>
+      {/* Rows */}
+      {openOrders.map((o) => (
+        <div key={o.id} className="grid grid-cols-[1fr_90px_90px_60px_80px] items-center gap-2 px-4 py-3 border-b last:border-b-0" style={{ borderColor: colors.borderSubtle }}>
+          <div>
+            <p className="text-[12px] font-semibold truncate" style={{ color: colors.textPrimary }}>{o.cardName}</p>
+            <p className="text-[10px] uppercase tracking-wide" style={{ color: colors.textMuted }}>PSA {o.grade}</p>
+          </div>
+          <span
+            className="inline-flex items-center rounded-full px-2 py-[2px] text-[10px] font-bold uppercase w-fit"
+            style={{
+              background: o.type === "buy" ? `${colors.green}18` : `${colors.red}18`,
+              color: o.type === "buy" ? colors.green : colors.red,
+            }}
+          >
+            {o.type === "buy" ? "Limit Buy" : "Limit Sell"}
+          </span>
+          <span className="tabular-nums text-[13px] font-bold" style={{ color: colors.textPrimary }}>
+            {formatCurrency(o.price)}
+          </span>
+          <span className="tabular-nums text-[12px]" style={{ color: colors.textSecondary }}>
+            {o.quantity}
+          </span>
+          <button
+            onClick={() => onCancelOrder(o.id)}
+            className="rounded-[6px] px-3 py-[5px] text-[11px] font-semibold transition-colors duration-150 hover:bg-red-500/20"
+            style={{ color: colors.red, border: `1px solid ${colors.red}44`, cursor: "pointer" }}
+          >
+            Cancel
+          </button>
+        </div>
+      ))}
     </div>
   );
 }

@@ -167,4 +167,3 @@ BEGIN
   INSERT INTO vault_holdings (user_id, card_id, symbol, status, acquisition_price, listing_price, created_at, cert_number, image_url)
   SELECT bob_uid, id, symbol, 'listed', 3600.00, 3800.00, '2024-06-21', 'PSA 60000001', '/cards/BLS10-BASE-1999.svg' FROM cards WHERE symbol = 'BLS10-BASE-1999';
 END $$;
-

@@ -19,54 +19,61 @@ import { useAuth } from "@/lib/auth";
 // Context type
 // ─────────────────────────────────────────────────────────
 
-interface PortfolioContextValue {
-  holdings: VaultHolding[];
-  /** Add a newly purchased card to the portfolio */
-  addHolding: (holding: VaultHolding) => void;
-  /** Remove a holding by ID (sold / withdrawn) */
-  removeHolding: (id: string) => void;
-  /** Partial update — e.g. change status to "listed" */
-  updateHolding: (id: string, patch: Partial<VaultHolding>) => void;
+export interface OpenOrder {
+  id: string;
+  symbol: string;
+  cardName: string;
+  grade: number;
+  type: "buy" | "sell";
+  price: number;
+  quantity: number;
+  createdAt: string;
+  holdingId: string | null;
 }
 
-// ─────────────────────────────────────────────────────────
-// Context
-// ─────────────────────────────────────────────────────────
+interface PortfolioContextValue {
+  holdings: VaultHolding[];
+  openOrders: OpenOrder[];
+  addHolding: (holding: VaultHolding) => void;
+  removeHolding: (id: string) => void;
+  updateHolding: (id: string, patch: Partial<VaultHolding>) => void;
+  removeOpenOrder: (id: string) => void;
+}
 
 const PortfolioContext = createContext<PortfolioContextValue | null>(null);
-
-// ─────────────────────────────────────────────────────────
-// Provider
-// ─────────────────────────────────────────────────────────
 
 export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated } = useAuth();
 
-  // Start with mock vault holdings if not authenticated, otherwise empty until load
   const [holdings, setHoldings] = useState<VaultHolding[]>([]);
+  const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load from Supabase when user auth state changes
   useEffect(() => {
     async function fetchHoldings() {
       if (!isAuthenticated || !user) {
-        setHoldings([]); // default empty for unauth
+        setHoldings([]);
+        setOpenOrders([]);
         setIsLoading(false);
         return;
       }
 
       try {
         setIsLoading(true);
-        // Note: getUserVaultHoldings is dynamically imported to avoid circular dependencies in context
         const { getUserVaultHoldings } = await import("@/lib/db/vault");
-        const data = await getUserVaultHoldings();
+        const holdingsData = await getUserVaultHoldings();
+        setHoldings(holdingsData);
 
-        // Also merge any local scanned cards that haven't been synced?
-        // For simplicity in the escrow demo, we just trust the DB. 
-        setHoldings(data);
+        // Fetch open orders natively via API
+        const { apiGet } = await import("@/lib/api");
+        const ordersData = await apiGet<{ orders: OpenOrder[] }>("/api/user/orders");
+        if (ordersData?.orders) {
+          setOpenOrders(ordersData.orders);
+        }
       } catch (err) {
         console.error("Failed to load portfolio", err);
         setHoldings([]);
+        setOpenOrders([]);
       } finally {
         setIsLoading(false);
       }
@@ -89,8 +96,12 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
+  const removeOpenOrder = useCallback((id: string) => {
+    setOpenOrders((prev) => prev.filter((o) => o.id !== id));
+  }, []);
+
   return (
-    <PortfolioContext.Provider value={{ holdings, addHolding, removeHolding, updateHolding }}>
+    <PortfolioContext.Provider value={{ holdings, openOrders, addHolding, removeHolding, updateHolding, removeOpenOrder }}>
       {children}
     </PortfolioContext.Provider>
   );

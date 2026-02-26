@@ -17,34 +17,26 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ error: "symbol is required" }, { status: 400 });
     }
 
-    // Fetch bids (buy orders) and asks (listed vault holdings) in parallel
-    const [{ data: bidsData }, { data: asksData }] = await Promise.all([
-        supabaseAdmin
-            .from("orders")
-            .select("price, quantity")
-            .eq("symbol", symbol)
-            .eq("type", "buy")
-            .eq("status", "open"),
-        supabaseAdmin
-            .from("vault_holdings")
-            .select("listing_price")
-            .eq("symbol", symbol)
-            .eq("status", "listed"),
-    ]);
+    const { data: ordersData, error: ordersErr } = await supabaseAdmin
+        .from("orders")
+        .select("price, quantity, type")
+        .eq("symbol", symbol)
+        .eq("status", "open");
 
-    // Aggregate bids by price
-    const bidMap = new Map<number, number>();
-    for (const row of bidsData || []) {
-        const p = Number(row.price);
-        bidMap.set(p, (bidMap.get(p) || 0) + row.quantity);
+    if (ordersErr) {
+        return NextResponse.json({ error: "Failed to fetch order book" }, { status: 500 });
     }
 
-    // Aggregate asks by price
+    // Aggregate by price
+    const bidMap = new Map<number, number>();
     const askMap = new Map<number, number>();
-    for (const row of asksData || []) {
-        if (row.listing_price) {
-            const p = Number(row.listing_price);
-            askMap.set(p, (askMap.get(p) || 0) + 1);
+
+    for (const row of ordersData || []) {
+        const p = Number(row.price);
+        if (row.type === "buy") {
+            bidMap.set(p, (bidMap.get(p) || 0) + row.quantity);
+        } else if (row.type === "sell") {
+            askMap.set(p, (askMap.get(p) || 0) + row.quantity);
         }
     }
 

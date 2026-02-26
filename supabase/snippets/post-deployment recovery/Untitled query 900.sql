@@ -1,0 +1,309 @@
+-- ============================================================
+-- LEDGER — Card Catalog Schema
+-- Run this in the Supabase SQL Editor (supabase.com → SQL Editor)
+-- ============================================================
+
+-- ── Card Catalog ────────────────────────────────────────────
+-- One row per unique card × PSA grade combination.
+-- e.g. Charizard Holo PSA 10 is a different row from PSA 9.
+
+CREATE TABLE IF NOT EXISTS cards (
+  id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  -- Trading identity
+  symbol          TEXT        UNIQUE NOT NULL,  -- e.g. "CHAR10-BASE-1999"
+  name            TEXT        NOT NULL,
+  category        TEXT        NOT NULL DEFAULT 'pokemon'
+                              CHECK (category IN ('pokemon', 'sports', 'mtg', 'other')),
+
+  -- Card metadata
+  set_name        TEXT        NOT NULL,
+  set_id          TEXT,                          -- pokemontcg.io set ID, e.g. "base1"
+  year            INTEGER,
+  rarity          TEXT,
+  artist          TEXT,
+  hp              INTEGER,
+  card_types      TEXT[],                        -- ["Fire"], ["Water", "Psychic"]
+  card_number     TEXT,                          -- number within set, e.g. "4/102"
+
+  -- PSA grading
+  psa_grade       INTEGER     NOT NULL CHECK (psa_grade IN (8, 9, 10)),
+  population      INTEGER     DEFAULT 0,         -- PSA pop report count at this grade
+
+  -- Images (from pokemontcg.io or uploaded)
+  image_url       TEXT,                          -- standard resolution ~245x342px
+  image_url_hi    TEXT,                          -- high resolution ~734x1024px
+
+  -- Source tracking
+  pokemon_card_id TEXT,                          -- pokemontcg.io card ID, e.g. "base1-4"
+
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ── Current Prices ──────────────────────────────────────────
+-- One row per card, upserted by the price-tick job.
+
+CREATE TABLE IF NOT EXISTS prices (
+  card_id         UUID        PRIMARY KEY REFERENCES cards(id) ON DELETE CASCADE,
+  price           DECIMAL(14,2) NOT NULL,
+  change_24h      DECIMAL(14,2) DEFAULT 0,
+  change_pct_24h  DECIMAL(10,4) DEFAULT 0,
+  high_24h        DECIMAL(14,2),
+  low_24h         DECIMAL(14,2),
+  volume_24h      INTEGER       DEFAULT 0,
+  updated_at      TIMESTAMPTZ   DEFAULT NOW()
+);
+
+-- ── Price History ───────────────────────────────────────────
+-- Append-only ledger of price ticks for charting.
+
+CREATE TABLE IF NOT EXISTS price_history (
+  id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  card_id     UUID        NOT NULL REFERENCES cards(id) ON DELETE CASCADE,
+  price       DECIMAL(14,2) NOT NULL,
+  recorded_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- ── Auto-record Price History ────────────────────────────────
+-- Automatically log a new row whenever `prices.price` changes.
+
+CREATE OR REPLACE FUNCTION log_price_history()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Only log if the price actually changed (or if it's a brand new insert)
+  IF (TG_OP = 'INSERT') OR (OLD.price IS DISTINCT FROM NEW.price) THEN
+    INSERT INTO price_history (card_id, price, recorded_at)
+    VALUES (NEW.card_id, NEW.price, NOW());
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_log_price_history ON prices;
+CREATE TRIGGER trg_log_price_history
+  AFTER INSERT OR UPDATE ON prices
+  FOR EACH ROW
+  EXECUTE FUNCTION log_price_history();
+
+-- ── Indexes ─────────────────────────────────────────────────
+
+CREATE INDEX IF NOT EXISTS idx_cards_category      ON cards(category);
+CREATE INDEX IF NOT EXISTS idx_cards_psa_grade     ON cards(psa_grade);
+CREATE INDEX IF NOT EXISTS idx_cards_set_id        ON cards(set_id);
+CREATE INDEX IF NOT EXISTS idx_cards_pokemon_id    ON cards(pokemon_card_id);
+CREATE INDEX IF NOT EXISTS idx_cards_symbol        ON cards(symbol);
+CREATE INDEX IF NOT EXISTS idx_ph_card_time        ON price_history(card_id, recorded_at DESC);
+
+-- ── Row Level Security ──────────────────────────────────────
+-- Public read access. Writes require service role key (only seeder/backend).
+
+ALTER TABLE cards         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE prices        ENABLE ROW LEVEL SECURITY;
+ALTER TABLE price_history ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies if re-running
+DROP POLICY IF EXISTS "Public read cards"         ON cards;
+DROP POLICY IF EXISTS "Public read prices"        ON prices;
+DROP POLICY IF EXISTS "Public read price_history" ON price_history;
+
+CREATE POLICY "Public read cards"
+  ON cards FOR SELECT USING (true);
+
+CREATE POLICY "Public read prices"
+  ON prices FOR SELECT USING (true);
+
+CREATE POLICY "Public read price_history"
+  ON price_history FOR SELECT USING (true);
+
+-- ── Auto-update updated_at ──────────────────────────────────
+
+CREATE OR REPLACE FUNCTION update_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_cards_updated_at ON cards;
+CREATE TRIGGER trg_cards_updated_at
+  BEFORE UPDATE ON cards
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ── Profiles ────────────────────────────────────────────────
+-- Maps to auth.users, holds balances and identity data.
+
+CREATE TABLE IF NOT EXISTS profiles (
+  id             UUID        PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  email          TEXT        NOT NULL UNIQUE,
+  name           TEXT,
+  cash_balance   DECIMAL(14,2) NOT NULL DEFAULT 25000.00,
+  created_at     TIMESTAMPTZ DEFAULT NOW(),
+  updated_at     TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- RLS
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can read own profile" ON profiles;
+CREATE POLICY "Users can read own profile"
+  ON profiles FOR SELECT USING (auth.uid() = id);
+
+-- Auto-update updated_at for profiles
+DROP TRIGGER IF EXISTS trg_profiles_updated_at ON profiles;
+CREATE TRIGGER trg_profiles_updated_at
+  BEFORE UPDATE ON profiles
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- Auto-create profile on signup
+CREATE OR REPLACE FUNCTION public.handle_new_user() 
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO public.profiles (id, email, name, cash_balance)
+  VALUES (
+    NEW.id,
+    NEW.email,
+    NEW.raw_user_meta_data->>'name',
+    25000.00
+  );
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+CREATE TRIGGER on_auth_user_created
+  AFTER INSERT ON auth.users
+  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+
+-- ── Vault Holdings ──────────────────────────────────────────
+-- Represents a user's physical asset in the escrow flow or vault
+
+CREATE TABLE IF NOT EXISTS vault_holdings (
+  id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id          UUID        NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  card_id          UUID        REFERENCES cards(id) ON DELETE RESTRICT,
+  symbol           TEXT        NOT NULL,                      -- denormalized from cards for easy lookup
+  
+  status           TEXT        NOT NULL DEFAULT 'pending_authentication'
+                               CHECK (status IN (
+                                 'pending_authentication',
+                                 'shipped',
+                                 'received',
+                                 'authenticating',
+                                 'tradable',
+                                 'withdrawn',
+                                 'listed'
+                               )),
+  
+  acquisition_price DECIMAL(14,2) NOT NULL DEFAULT 0,
+  listing_price     DECIMAL(14,2),                            -- only set when status = 'listed'
+  
+  cert_number      TEXT,                                      -- PSA cert number
+  image_url        TEXT,                                      -- user uploaded photo or default card image
+  
+  created_at       TIMESTAMPTZ DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Indexes for vault_holdings
+CREATE INDEX IF NOT EXISTS idx_vh_user_id ON vault_holdings(user_id);
+CREATE INDEX IF NOT EXISTS idx_vh_card_id ON vault_holdings(card_id);
+CREATE INDEX IF NOT EXISTS idx_vh_status  ON vault_holdings(status);
+
+-- RLS
+ALTER TABLE vault_holdings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Public read vault_holdings" ON vault_holdings;
+
+CREATE POLICY "Public read vault_holdings"
+  ON vault_holdings FOR SELECT USING (true);
+  
+-- Auto-update updated_at for vault_holdings
+DROP TRIGGER IF EXISTS trg_vh_updated_at ON vault_holdings;
+CREATE TRIGGER trg_vh_updated_at
+  BEFORE UPDATE ON vault_holdings
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+
+-- ── Trades Ledger ─────────────────────────────────────────────
+-- Records each matched trade so the app can show history.
+
+CREATE TABLE IF NOT EXISTS trades (
+  id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  holding_id   UUID        NOT NULL REFERENCES vault_holdings(id) ON DELETE CASCADE,
+  symbol       TEXT        NOT NULL,
+  buyer_id     UUID        NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  seller_id    UUID        NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  price        DECIMAL(14,2) NOT NULL,
+  executed_at  TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_trades_symbol    ON trades(symbol);
+CREATE INDEX IF NOT EXISTS idx_trades_buyer_id  ON trades(buyer_id);
+CREATE INDEX IF NOT EXISTS idx_trades_seller_id ON trades(seller_id);
+
+-- RLS
+ALTER TABLE trades ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can read own trades" ON trades;
+CREATE POLICY "Users can read own trades"
+  ON trades FOR SELECT USING (auth.uid() = buyer_id OR auth.uid() = seller_id);
+
+
+-- ── Asset Transfer (RPC) ────────────────────────────────────
+-- Atomically exchanges cash for a vault_holding card.
+
+CREATE OR REPLACE FUNCTION match_order(
+  p_buyer_id UUID,
+  p_seller_id UUID,
+  p_holding_id UUID,
+  p_price DECIMAL
+) RETURNS BOOLEAN AS $$
+DECLARE
+  v_buyer_balance DECIMAL;
+  v_holding_status TEXT;
+  v_holding_owner UUID;
+  v_symbol TEXT;
+BEGIN
+  -- 1. Ensure the buyer has enough balance
+  SELECT cash_balance INTO v_buyer_balance FROM profiles WHERE id = p_buyer_id FOR UPDATE;
+  IF v_buyer_balance < p_price THEN
+    RAISE EXCEPTION 'Insufficient funds';
+  END IF;
+
+  -- 2. Ensure holding is actually listed & belongs to seller
+  SELECT status, user_id, symbol INTO v_holding_status, v_holding_owner, v_symbol
+    FROM vault_holdings 
+    WHERE id = p_holding_id FOR UPDATE;
+
+  IF v_holding_owner != p_seller_id THEN
+    RAISE EXCEPTION 'Holding does not belong to seller';
+  END IF;
+  
+  IF v_holding_status != 'listed' THEN
+    RAISE EXCEPTION 'Holding is not listed for sale';
+  END IF;
+
+  -- 3. Deduct from buyer
+  UPDATE profiles SET cash_balance = cash_balance - p_price WHERE id = p_buyer_id;
+
+  -- 4. Add to seller
+  UPDATE profiles SET cash_balance = cash_balance + p_price WHERE id = p_seller_id;
+
+  -- 5. Transfer card ownership & reset status to tradable
+  UPDATE vault_holdings 
+    SET user_id = p_buyer_id, 
+        status = 'tradable', 
+        listing_price = NULL,
+        acquisition_price = p_price
+    WHERE id = p_holding_id;
+
+  -- 6. Record trade in ledger
+  INSERT INTO trades (holding_id, symbol, buyer_id, seller_id, price, executed_at)
+  VALUES (p_holding_id, v_symbol, p_buyer_id, p_seller_id, p_price, NOW());
+
+  RETURN TRUE;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
