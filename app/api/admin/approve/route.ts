@@ -25,7 +25,7 @@ export async function PATCH(req: NextRequest) {
         .from("vault_holdings")
         .update({ status: "tradable" })
         .eq("id", holdingId)
-        .eq("status", "shipped")  // Can only approve items that are shipped
+        .in("status", ["shipped", "pending_authentication"])  // Can approve shipped or pending items
         .select()
         .single();
 
@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
       image_url,
       profiles(name, email)
     `)
-        .eq("status", "shipped")
+        .in("status", ["shipped", "pending_authentication"])
         .order("created_at", { ascending: false });
 
     if (error) {

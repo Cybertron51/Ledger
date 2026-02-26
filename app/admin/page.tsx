@@ -99,8 +99,8 @@ export default function AdminPage() {
                                 <div style={{ flex: 1 }}>
                                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                                         <span style={{ fontSize: 15, fontWeight: 700, color: colors.textPrimary }}>{item.symbol}</span>
-                                        <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 6px", borderRadius: 4, background: "rgba(245,200,66,0.15)", color: "#F5C842", textTransform: "uppercase" }}>
-                                            Shipped
+                                        <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 6px", borderRadius: 4, background: item.status === "shipped" ? "rgba(245,200,66,0.15)" : "rgba(245,130,66,0.15)", color: item.status === "shipped" ? "#F5C842" : "#F58242", textTransform: "uppercase" }}>
+                                            {item.status === "shipped" ? "Shipped" : "Pending"}
                                         </span>
                                     </div>
                                     <p style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 2 }}>

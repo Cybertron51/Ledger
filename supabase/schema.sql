@@ -392,7 +392,7 @@ CREATE TABLE IF NOT EXISTS orders (
   -- The number of items wanted or offered. 
   -- When match_order runs successfully on a 1-quantity match, this is decremented.
   -- When quantity hits 0, the order is 'filled'. 
-  quantity     INTEGER     NOT NULL DEFAULT 1 CHECK (quantity > 0),
+  quantity     INTEGER     NOT NULL DEFAULT 1 CHECK (quantity >= 0),
   
   status       TEXT        NOT NULL DEFAULT 'open'
                            CHECK (status IN ('open', 'filled', 'cancelled')),

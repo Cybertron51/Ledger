@@ -1,38 +1,61 @@
--- 0. Fix quantity constraint: allow 0 for filled orders
-ALTER TABLE orders DROP CONSTRAINT IF EXISTS orders_quantity_check;
-ALTER TABLE orders ADD CONSTRAINT orders_quantity_check CHECK (quantity >= 0);
+-- ============================================================
+-- Migration: Add CLOB (Central Limit Order Book) features
+-- Adds locked_balance, holding_id, rewritten place_order, cancel_order
+-- ============================================================
 
--- 0b. Add compound matching index for performance
-CREATE INDEX IF NOT EXISTS idx_orders_matching ON orders (symbol, type, status, price, created_at);
+-- 1. Add locked_balance to profiles (for fund locking on buy orders)
+ALTER TABLE profiles 
+  ADD COLUMN IF NOT EXISTS locked_balance DECIMAL(14,2) NOT NULL DEFAULT 0.00;
 
--- 1. Add locked_balance to profiles
-ALTER TABLE profiles ADD COLUMN IF NOT EXISTS locked_balance DECIMAL(14,2) NOT NULL DEFAULT 0.00 CHECK (locked_balance >= 0);
+-- Add CHECK constraints (safe even if column existed)
+-- We use DO blocks to avoid errors if constraints already exist
+DO $$ BEGIN
+  ALTER TABLE profiles ADD CONSTRAINT profiles_cash_balance_check CHECK (cash_balance >= 0);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
--- Update trigger for handle_new_user to include locked_balance
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER SET search_path = ''
-AS $$
+DO $$ BEGIN
+  ALTER TABLE profiles ADD CONSTRAINT profiles_locked_balance_check CHECK (locked_balance >= 0);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- 2. Update handle_new_user to include locked_balance
+CREATE OR REPLACE FUNCTION public.handle_new_user() 
+RETURNS TRIGGER AS $$
 BEGIN
   INSERT INTO public.profiles (id, email, name, cash_balance, locked_balance)
   VALUES (
     NEW.id,
     NEW.email,
-    COALESCE(NEW.raw_user_meta_data->>'full_name', NEW.raw_user_meta_data->>'name', 'User'),
+    NEW.raw_user_meta_data->>'name',
     25000.00,
     0.00
   );
   RETURN NEW;
 END;
-$$;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 2. Add holding_id to orders
-ALTER TABLE orders ADD COLUMN IF NOT EXISTS holding_id UUID REFERENCES public.vault_holdings(id) ON DELETE SET NULL;
+-- 3. Add holding_id column to orders (links sell orders to specific vault holdings)
+ALTER TABLE orders 
+  ADD COLUMN IF NOT EXISTS holding_id UUID REFERENCES public.vault_holdings(id) ON DELETE SET NULL;
 
--- 3. Replace place_order RPC
-DROP FUNCTION IF EXISTS place_order(UUID, TEXT, TEXT, NUMERIC, INTEGER);
-DROP FUNCTION IF EXISTS place_order(UUID, TEXT, TEXT, DECIMAL, INTEGER);
+-- 4. Add CHECK constraints to orders and vault_holdings
+DO $$ BEGIN
+  ALTER TABLE orders ADD CONSTRAINT orders_price_positive CHECK (price > 0);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE vault_holdings ADD CONSTRAINT vault_holdings_acquisition_price_check CHECK (acquisition_price >= 0);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$ BEGIN
+  ALTER TABLE vault_holdings ADD CONSTRAINT vault_holdings_listing_price_check CHECK (listing_price > 0);
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
+
+-- 5. Replace place_order with CLOB version (fund/asset locking)
 CREATE OR REPLACE FUNCTION place_order(
   p_user_id UUID,
   p_symbol TEXT,
@@ -100,13 +123,12 @@ BEGIN
       FROM vault_holdings WHERE id = v_match.holding_id FOR UPDATE;
 
       IF v_holding_status != 'listed' OR v_holding_owner != v_match.user_id THEN
-        -- Somehow invalid, skip and cancel the bad ask
         UPDATE orders SET status = 'cancelled' WHERE id = v_match.id;
         CONTINUE;
       END IF;
 
       -- Execute Trade!
-      -- 1. Buyer gets refund if match price < limit price (from locked balance)
+      -- 1. Buyer gets refund if match price < limit price
       UPDATE profiles SET 
         locked_balance = locked_balance - p_price,
         cash_balance = cash_balance + (p_price - v_trade_price)
@@ -166,7 +188,6 @@ BEGIN
     LOOP
       EXIT WHEN v_rem_qty = 0;
       
-      -- For a bid hit by an ask, the trade happens at the resting BID's price
       v_trade_price := v_match.price;
 
       -- 1. Deduct from buyer's locked balance
@@ -175,7 +196,7 @@ BEGIN
       -- 2. Give cash to seller (p_user_id)
       UPDATE profiles SET cash_balance = cash_balance + v_trade_price WHERE id = p_user_id;
 
-      -- 3. Transfer holding. It was 'listed', now goes to buyer as 'tradable'
+      -- 3. Transfer holding
       UPDATE vault_holdings 
         SET user_id = v_match.user_id, 
             status = 'tradable', 
@@ -204,7 +225,6 @@ BEGIN
   IF v_rem_qty = 0 THEN
     UPDATE orders SET status = 'filled', quantity = 0 WHERE id = v_new_order_id;
   ELSIF v_rem_qty < p_quantity THEN
-    -- Partially filled
     UPDATE orders SET quantity = v_rem_qty WHERE id = v_new_order_id;
   END IF;
 
@@ -212,8 +232,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
-
--- 4. cancel_order RPC
+-- 6. Add cancel_order function
 CREATE OR REPLACE FUNCTION cancel_order(
   p_order_id UUID,
   p_user_id UUID
@@ -221,24 +240,20 @@ CREATE OR REPLACE FUNCTION cancel_order(
 DECLARE
   v_order RECORD;
 BEGIN
-  -- 1. Find the order
   SELECT * INTO v_order FROM orders WHERE id = p_order_id AND user_id = p_user_id AND status = 'open' FOR UPDATE;
   
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Order not found or not open';
   END IF;
 
-  -- 2. Mark cancelled
   UPDATE orders SET status = 'cancelled' WHERE id = p_order_id;
 
-  -- 3. Release locks
   IF v_order.type = 'buy' THEN
     UPDATE profiles SET 
       locked_balance = locked_balance - (v_order.price * v_order.quantity),
       cash_balance = cash_balance + (v_order.price * v_order.quantity)
     WHERE id = p_user_id;
   ELSE
-    -- Revert the holding
     UPDATE vault_holdings SET status = 'tradable', listing_price = NULL WHERE id = v_order.holding_id;
   END IF;
 

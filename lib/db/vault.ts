@@ -25,7 +25,8 @@ export async function getUserVaultHoldings(): Promise<VaultHolding[]> {
  */
 export async function insertVaultHolding(
     holding: Partial<VaultHolding> & { symbol: string; acquisitionPrice: number },
-    cardId?: string
+    cardId?: string,
+    cardMeta?: { name?: string; category?: string; set?: string; year?: number; grade?: number; cardNumber?: string | null }
 ) {
     return apiPost("/api/vault/holdings", {
         symbol: holding.symbol,
@@ -35,6 +36,7 @@ export async function insertVaultHolding(
         imageUrl: holding.imageUrl || null,
         rawImageUrl: holding.rawImageUrl || null,
         cardId: cardId || null,
+        cardMeta: cardMeta || null,
     });
 }
 

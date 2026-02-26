@@ -345,8 +345,15 @@ export default function ScanPage() {
       };
 
       try {
-        // 1. Save to Supabase DB using our helper
-        await insertVaultHolding(newHolding);
+        // 1. Save to Supabase DB using our helper — include card metadata for catalog auto-creation
+        await insertVaultHolding(newHolding, undefined, {
+          name: result.name,
+          category: result.category,
+          set: result.set,
+          year: result.year,
+          grade: Math.round(result.estimatedGrade ?? 9),
+          cardNumber: result.cardNumber,
+        });
 
         // 2. Update local context immediately
         addHolding(newHolding);

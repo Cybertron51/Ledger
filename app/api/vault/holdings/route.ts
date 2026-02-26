@@ -65,17 +65,71 @@ export async function POST(req: NextRequest) {
     if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
 
     const body = await req.json();
-    const { symbol, acquisitionPrice, status, certNumber, imageUrl, rawImageUrl, cardId } = body;
+    const { symbol, acquisitionPrice, status, certNumber, imageUrl, rawImageUrl, cardId, cardMeta } = body;
 
     if (!symbol || acquisitionPrice === undefined) {
         return NextResponse.json({ error: "symbol and acquisitionPrice are required" }, { status: 400 });
+    }
+
+    let resolvedCardId = cardId || null;
+
+    // If no existing card match, auto-create a cards + prices entry from scan metadata
+    if (!resolvedCardId && cardMeta) {
+        try {
+            // Check if a card with this symbol already exists
+            const { data: existingCard } = await supabaseAdmin
+                .from("cards")
+                .select("id")
+                .eq("symbol", symbol)
+                .single();
+
+            if (existingCard) {
+                resolvedCardId = existingCard.id;
+            } else {
+                // Create new card catalog entry
+                const { data: newCard, error: cardError } = await supabaseAdmin
+                    .from("cards")
+                    .insert({
+                        symbol,
+                        name: cardMeta.name || "Unknown Card",
+                        category: cardMeta.category || "other",
+                        set_name: cardMeta.set || "Unknown Set",
+                        year: cardMeta.year || null,
+                        psa_grade: Math.min(Math.max(cardMeta.grade || 9, 8), 10),
+                        image_url: imageUrl || null,
+                        card_number: cardMeta.cardNumber || null,
+                    })
+                    .select("id")
+                    .single();
+
+                if (cardError) {
+                    console.error("Failed to create card catalog entry:", cardError.message);
+                } else if (newCard) {
+                    resolvedCardId = newCard.id;
+
+                    // Create initial price entry so the card shows in the market
+                    const initialPrice = acquisitionPrice > 0 ? acquisitionPrice : 100;
+                    await supabaseAdmin
+                        .from("prices")
+                        .insert({
+                            card_id: newCard.id,
+                            price: initialPrice,
+                            change_24h: 0,
+                            change_pct_24h: 0,
+                            volume_24h: 0,
+                        });
+                }
+            }
+        } catch (err) {
+            console.error("Error auto-creating card entry:", err);
+        }
     }
 
     const { data, error } = await supabaseAdmin
         .from("vault_holdings")
         .insert({
             user_id: auth.userId,
-            card_id: cardId || null,
+            card_id: resolvedCardId,
             symbol,
             status: status || "pending_authentication",
             acquisition_price: acquisitionPrice,

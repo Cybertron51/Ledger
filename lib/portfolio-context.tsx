@@ -83,7 +83,13 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   }, [isAuthenticated, user]);
 
   const addHolding = useCallback((holding: VaultHolding) => {
-    setHoldings((prev) => [holding, ...prev]);
+    setHoldings((prev) => {
+      // Prevent duplicates by id or certNumber
+      if (prev.some((h) => h.id === holding.id || (holding.certNumber && h.certNumber === holding.certNumber && holding.certNumber !== "Pending grading"))) {
+        return prev;
+      }
+      return [holding, ...prev];
+    });
   }, []);
 
   const removeHolding = useCallback((id: string) => {
