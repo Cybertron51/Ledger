@@ -49,5 +49,10 @@
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
     "typescript": "^5"
+  },
+  "overrides": {
+    "use-sync-external-store": {
+      "react": "$react"
+    }
   }
 }
