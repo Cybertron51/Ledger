@@ -50,6 +50,10 @@ export async function GET(req: NextRequest) {
         .select(`
       id,
       symbol,
+      name,
+      set,
+      grade,
+      cert_number,
       acquisition_price,
       status,
       image_url,

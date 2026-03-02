@@ -263,7 +263,7 @@ export default function PortfolioPage() {
           Authorization: `Bearer ${session?.access_token}`,
         },
         body: JSON.stringify({
-          userId: user?.id,
+          type: "holding",
           holdingId: holding.id,
           currentValueUsd: priceMap[holding.symbol] ?? 0,
         }),
@@ -1202,7 +1202,7 @@ function PortfolioOverview({ holdings, openOrders, priceMap, assets, activities,
               })}
             </div>
           )}
-      </>
+        </>
       )}
     </div>
   );

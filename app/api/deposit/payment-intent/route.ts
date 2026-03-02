@@ -1,14 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import Stripe from "stripe";
-
-// Safely initialize stripe so the Next.js build doesn't crash
-// if STRIPE_SECRET_KEY is missing from the environment.
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "sk_test_placeholder", {
-  apiVersion: "2026-01-28.clover",
-});
-
-// Avoid crashes during Next build if missing
-const stripeAccount = process.env.STRIPE_ACCOUNT_ID ?? "acct_placeholder";
+import { stripe } from "@/lib/stripe";
 
 const MIN_CENTS = 100;   // $1.00
 const MAX_CENTS = 1_000_000; // $10,000.00
@@ -39,7 +30,7 @@ export async function POST(req: NextRequest) {
           userId: userId || "",
         }
       },
-      { stripeAccount }
+      { stripeAccount: process.env.STRIPE_ACCOUNT_ID }
     );
 
     return NextResponse.json({ clientSecret: paymentIntent.client_secret });

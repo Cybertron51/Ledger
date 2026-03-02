@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Link from "next/link";
 import { CheckCircle, Lock, Loader2 } from "lucide-react";
 import { colors } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
@@ -247,7 +248,7 @@ export function TradePanel({ asset, onRequestSignIn }: TradePanelProps) {
   return (
     <div className="flex flex-col gap-3 p-3">
       {/* Available balance */}
-      {isAuthenticated && user && (
+      {isAuthenticated && user && user.onboardingComplete && (
         <div className="flex items-center justify-between">
           <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
             Available

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronRight, ChevronLeft, Gamepad2, TrendingUp, Search, UserCircle2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
@@ -10,8 +10,20 @@ import { useAuth } from "@/lib/auth";
 
 export default function OnboardingPage() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { session, user } = useAuth();
-    const [step, setStep] = useState(1);
+
+    // Initialize step from URL if present
+    const stepParam = searchParams.get("step");
+    const [step, setStep] = useState(stepParam ? parseInt(stepParam) : 1);
+
+    // Sync step state if URL parameter changes
+    useEffect(() => {
+        const currentStep = searchParams.get("step");
+        if (currentStep) {
+            setStep(parseInt(currentStep));
+        }
+    }, [searchParams]);
 
     // Form State
     const [username, setUsername] = useState("");
@@ -21,6 +33,16 @@ export default function OnboardingPage() {
     // UI State
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const { refreshProfile } = useAuth();
+
+    // Auto-refresh profile if returning from Stripe
+    useEffect(() => {
+        const status = searchParams.get("status");
+        if (status === "success" || status === "refresh") {
+            refreshProfile();
+        }
+    }, [searchParams, refreshProfile]);
 
     // If user is already fully onboarded, redirect them away
     useEffect(() => {
@@ -102,7 +124,7 @@ export default function OnboardingPage() {
                 {/* Progress Dots */}
                 {step >= 1 && (
                     <div className="absolute top-12 left-8 sm:left-16 lg:left-24 flex items-center space-x-2">
-                        {[1, 2, 3].map((i) => (
+                        {[1, 2, 3, 4].map((i) => (
                             <div
                                 key={i}
                                 className={`h-1.5 rounded-full transition-all duration-300 ${step >= i ? "w-8 bg-blue-500" : "w-4 bg-zinc-800"
@@ -271,8 +293,86 @@ export default function OnboardingPage() {
                                         : "bg-white text-black hover:bg-zinc-200"
                                         }`}
                                 >
-                                    <span>{isSubmitting ? "Completing..." : "Complete Setup"}</span>
+                                    <span>{isSubmitting ? "Saving..." : "Next"}</span>
                                     {!isSubmitting && <ChevronRight className="w-4 h-4" />}
+                                </button>
+                            </div>
+                        </motion.div>
+                    )}
+
+                    {step === 4 && (
+                        <motion.div
+                            key="step5"
+                            initial={{ opacity: 0, x: 50 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            className="space-y-8"
+                        >
+                            <div>
+                                <h1 className="text-3xl font-bold mb-4">Final Step: Connect your Wallet</h1>
+                                <p className="text-zinc-400 text-lg leading-relaxed">
+                                    To buy, sell, and withdraw funds on Tash, you need to connect your financial account via Stripe.
+                                    This ensures secure, instant settlements.
+                                </p>
+                            </div>
+
+                            <div className="p-6 rounded-2xl bg-zinc-900/50 border border-zinc-800 space-y-4">
+                                <div className="flex items-center space-x-4">
+                                    <div className="h-10 w-10 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400">
+                                        <TrendingUp className="h-5 w-5" />
+                                    </div>
+                                    <p className="text-sm font-medium">Instant Withdrawals to your bank</p>
+                                </div>
+                                <div className="flex items-center space-x-4">
+                                    <div className="h-10 w-10 rounded-full bg-green-500/10 flex items-center justify-center text-green-400">
+                                        <div className="font-bold text-xs">$</div>
+                                    </div>
+                                    <p className="text-sm font-medium">Zero-fee trading of vaulted assets</p>
+                                </div>
+                            </div>
+
+                            {error && <p className="text-red-400 text-sm">{error}</p>}
+
+                            <div className="flex flex-col space-y-4 pt-4">
+                                <button
+                                    onClick={async () => {
+                                        if (!user) return;
+                                        setIsSubmitting(true);
+                                        setError(null);
+                                        try {
+                                            const res = await fetch("/api/connect", {
+                                                method: "POST",
+                                                headers: { "Content-Type": "application/json" },
+                                                body: JSON.stringify({ userId: user.id, email: user.email }),
+                                            });
+                                            const data = await res.json();
+                                            if (data.url) {
+                                                window.location.href = data.url;
+                                            } else {
+                                                throw new Error(data.error || "Failed to get onboarding link");
+                                            }
+                                        } catch (err: any) {
+                                            setError(err.message);
+                                            setIsSubmitting(false);
+                                        }
+                                    }}
+                                    disabled={isSubmitting}
+                                    className="w-full bg-white text-black hover:bg-zinc-100 py-4 rounded-xl font-bold text-lg transition-all flex items-center justify-center space-x-2"
+                                >
+                                    {isSubmitting ? (
+                                        <span>Redirecting to Stripe...</span>
+                                    ) : (
+                                        <>
+                                            <span>Setup Financial Wallet</span>
+                                            <ChevronRight className="h-5 w-5" />
+                                        </>
+                                    )}
+                                </button>
+
+                                <button
+                                    onClick={() => router.push("/portfolio")}
+                                    className="w-full text-zinc-500 hover:text-white py-2 text-sm transition-colors"
+                                >
+                                    I'll do this later
                                 </button>
                             </div>
                         </motion.div>

@@ -23,13 +23,21 @@ import {
 import { colors, layout } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
 import { type VaultHolding } from "@/lib/vault-data";
-import { type CardPricing } from "@/app/api/scan/route";
 import { insertVaultHolding } from "@/lib/db/vault";
 
 import { useAuth } from "@/lib/auth";
 import { SignInModal } from "@/components/auth/SignInModal";
 import { usePortfolio } from "@/lib/portfolio-context";
 import { v4 as uuidv4 } from "uuid";
+import { BrowserMultiFormatReader } from "@zxing/browser";
+
+export interface CardPricing {
+  low: string | null;
+  mid: string | null;
+  high: string | null;
+  labels: [string, string, string];
+  source: string;
+}
 
 // ─────────────────────────────────────────────────────────
 // Types
@@ -74,6 +82,7 @@ export interface ScanItem {
   rawImageUrl?: string | null;
   pricing?: CardPricing | null;
   error?: string;
+  selected?: boolean;
 }
 
 // ─────────────────────────────────────────────────────────
@@ -183,6 +192,7 @@ export default function ScanPage() {
             mimeType: "image/jpeg",
             thumbDataUrl: thumb,
             status: "pending",
+            selected: true,
           };
           setScans((prev) => [...prev, newItem]);
         };
@@ -222,6 +232,7 @@ export default function ScanPage() {
             mimeType: mime,
             thumbDataUrl: makeThumb(canvas),
             status: "pending",
+            selected: true,
           };
           setScans((prev) => [...prev, newItem]);
         };
@@ -232,18 +243,16 @@ export default function ScanPage() {
   }
 
   // ── Auto-analyze Queue ─────────────────────────────────
+  // Removed automatic transition. The user now manually triggers onStartAnalysis.
   useEffect(() => {
-    const pendingScans = scans.filter((s) => s.status === "pending");
     const analyzingScans = scans.filter((s) => s.status === "analyzing");
-
-    if (pendingScans.length > 0 && stage !== "analyzing") {
-      setStage("analyzing");
-    }
 
     if (stage === "analyzing") {
       // Only start next if nothing is currently analyzing
       if (analyzingScans.length === 0) {
-        const nextPendingIndex = scans.findIndex((s) => s.status === "pending");
+        // Find the next pending and selected scan
+        const nextPendingIndex = scans.findIndex((s) => s.status === "pending" && s.selected !== false);
+
         if (nextPendingIndex !== -1) {
           setActiveScanIndex(nextPendingIndex);
           analyzeCard(nextPendingIndex);
@@ -271,10 +280,32 @@ export default function ScanPage() {
     });
 
     try {
+      // Attempt to read barcode locally first for speed
+      let scannedCert: string | undefined;
+      try {
+        const codeReader = new BrowserMultiFormatReader();
+        const htmlImageObj = new Image();
+        htmlImageObj.src = item.blobUrl;
+        await new Promise((resolve) => {
+          htmlImageObj.onload = resolve;
+        });
+        const result = await codeReader.decodeFromImageElement(htmlImageObj);
+        if (result && result.getText()) {
+          scannedCert = result.getText();
+        }
+      } catch (err) {
+        // Barcode reader might fail if no barcode is found, this is fine
+        console.log("No barcode detected locally or error decoding:", err);
+      }
+
       const res = await fetch("/api/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64: item.imageBase64, mimeType: item.mimeType }),
+        body: JSON.stringify({
+          imageBase64: item.imageBase64,
+          mimeType: item.mimeType,
+          certNumberLocalScan: scannedCert
+        }),
       });
 
       const data = await res.json();
@@ -452,6 +483,9 @@ export default function ScanPage() {
             onDragLeave={() => setDragOver(false)}
             onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
             onSwitchToUpload={() => { setCaptureTab("upload"); setCameraError(null); }}
+            onToggleSelection={(id) => {
+              setScans(prev => prev.map(s => s.id === id ? { ...s, selected: !s.selected } : s));
+            }}
           />
         )}
 
@@ -498,6 +532,7 @@ interface CaptureStageProps {
   onDragLeave: () => void;
   onDrop: (e: React.DragEvent) => void;
   onSwitchToUpload: () => void;
+  onToggleSelection: (id: string) => void;
 }
 
 function CaptureStage({
@@ -516,7 +551,10 @@ function CaptureStage({
   onDragLeave,
   onDrop,
   onSwitchToUpload,
+  onToggleSelection,
 }: CaptureStageProps) {
+  const selectedCount = scans.filter(s => s.selected !== false).length;
+
   return (
     <>
       {/* Header */}
@@ -679,12 +717,18 @@ function CaptureStage({
                   }}
                 >
                   {scans.map((s, i) => (
-                    <img
-                      key={s.id}
-                      src={s.thumbDataUrl}
-                      alt="thumb"
-                      style={{ width: 40, height: 56, borderRadius: 4, border: `2px solid ${colors.green}`, objectFit: "cover" }}
-                    />
+                    <div key={s.id} style={{ position: "relative", cursor: "pointer" }} onClick={() => onToggleSelection(s.id)}>
+                      <img
+                        src={s.thumbDataUrl}
+                        alt="thumb"
+                        style={{ width: 40, height: 56, borderRadius: 4, border: `2px solid ${s.selected !== false ? colors.green : colors.border}`, objectFit: "cover", opacity: s.selected !== false ? 1 : 0.5 }}
+                      />
+                      {s.selected !== false && (
+                        <div style={{ position: 'absolute', top: -4, right: -4, background: colors.green, borderRadius: '50%', padding: 2 }}>
+                          <CheckCircle size={10} color={colors.background} strokeWidth={3} />
+                        </div>
+                      )}
+                    </div>
                   ))}
                 </div>
               )}
@@ -728,6 +772,7 @@ function CaptureStage({
             onDragLeave={onDragLeave}
             onDrop={onDrop}
             style={{
+              position: "relative",
               border: `2px dashed ${dragOver ? colors.green : colors.border}`,
               borderRadius: 12,
               padding: "48px 24px",
@@ -759,16 +804,36 @@ function CaptureStage({
               onFiles(e.target.files);
             }}
           />
+
+          {/* Uploaded Files Selection Grid */}
+          {scans.length > 0 && (
+            <div style={{ marginTop: 24, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(64px, 1fr))", gap: 12 }}>
+              {scans.map((s) => (
+                <div key={s.id} style={{ position: "relative", cursor: "pointer" }} onClick={() => onToggleSelection(s.id)}>
+                  <img
+                    src={s.thumbDataUrl}
+                    alt="thumb"
+                    style={{ width: "100%", aspectRatio: "3/4", borderRadius: 8, border: `2px solid ${s.selected !== false ? colors.green : colors.border}`, objectFit: "cover", opacity: s.selected !== false ? 1 : 0.5 }}
+                  />
+                  {s.selected !== false && (
+                    <div style={{ position: 'absolute', top: -6, right: -6, background: colors.green, borderRadius: '50%', padding: 2, border: `2px solid ${colors.surface}` }}>
+                      <CheckCircle size={14} color={colors.background} strokeWidth={3} />
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </>
       )}
 
       {/* Global Analyze Button */}
-      {scans.length > 0 && captureTab === "camera" && (
+      {selectedCount > 0 && (
         <button
           onClick={onStartAnalysis}
           style={{
             width: "100%",
-            marginTop: 16,
+            marginTop: 24,
             padding: "16px 0",
             borderRadius: 12,
             background: colors.green,
@@ -779,7 +844,7 @@ function CaptureStage({
             cursor: "pointer",
           }}
         >
-          Analyze {scans.length} {scans.length === 1 ? "Card" : "Cards"} →
+          Scan {selectedCount} {selectedCount === 1 ? "Selected Card" : "Selected Cards"} →
         </button>
       )}
     </>
@@ -908,10 +973,11 @@ function ResultStage({
                   display: "flex",
                   gap: 12,
                   padding: 12,
-                  background: colors.surface,
+                  background: isValid ? colors.surface : "rgba(255,59,48,0.04)",
                   borderRadius: 12,
                   border: `1px solid ${isValid ? colors.border : colors.red + "44"}`,
                   alignItems: "center",
+                  opacity: isValid ? 1 : 0.8,
                 }}
               >
                 {/* Thumb */}
@@ -947,9 +1013,21 @@ function ResultStage({
                     </span>
                   </div>
                   {!isValid && (
-                    <p style={{ fontSize: 11, color: colors.red, margin: "6px 0 0", fontWeight: 600 }}>
-                      Missing PSA Label or Cut Off
-                    </p>
+                    <div style={{ marginTop: 8 }}>
+                      <p style={{ fontSize: 11, color: colors.red, margin: "0", fontWeight: 600 }}>
+                        Unacceptable Scan
+                      </p>
+                      <p style={{ fontSize: 11, color: colors.textSecondary, margin: "2px 0 0" }}>
+                        {(!result.isFullSlabVisible) ? "The entire PSA slab must be visible." : "AI confidence was too low."}
+                      </p>
+                    </div>
+                  )}
+                  {isValid && item.pricing && (
+                    <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+                      {item.pricing.low && <span style={{ fontSize: 11, color: colors.textSecondary }}>Low: ${Number(item.pricing.low).toFixed(2)}</span>}
+                      {item.pricing.mid && <span style={{ fontSize: 11, color: colors.textPrimary, fontWeight: 500 }}>Mid: ${Number(item.pricing.mid).toFixed(2)}</span>}
+                      {item.pricing.high && <span style={{ fontSize: 11, color: colors.green }}>High: ${Number(item.pricing.high).toFixed(2)}</span>}
+                    </div>
                   )}
                 </div>
               </div>

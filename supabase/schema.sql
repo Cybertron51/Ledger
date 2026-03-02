@@ -143,6 +143,8 @@ CREATE TABLE IF NOT EXISTS profiles (
   primary_goal   TEXT,
   cash_balance   DECIMAL(14,2) NOT NULL DEFAULT 25000.00 CHECK (cash_balance >= 0),
   locked_balance DECIMAL(14,2) NOT NULL DEFAULT 0.00 CHECK (locked_balance >= 0),
+  stripe_account_id TEXT,
+  onboarding_complete BOOLEAN DEFAULT FALSE,
   created_at     TIMESTAMPTZ DEFAULT NOW(),
   updated_at     TIMESTAMPTZ DEFAULT NOW()
 );
@@ -180,6 +182,29 @@ DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_user();
+
+
+-- ── Stripe Transaction Ledger ───────────────────────────────
+-- Idempotency table for Stripe webhook events.
+-- Prevents double-crediting deposits.
+
+CREATE TABLE IF NOT EXISTS stripe_transactions (
+  id           TEXT        PRIMARY KEY,     -- Stripe Payment Intent ID
+  user_id      UUID        NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  amount       DECIMAL(14,2) NOT NULL,
+  type         TEXT        NOT NULL,        -- 'deposit' or 'withdrawal'
+  created_at   TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_st_user_id ON stripe_transactions(user_id);
+
+-- RLS: Only service_role can write; users can read their own rows
+ALTER TABLE stripe_transactions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Users can read own stripe_transactions" ON stripe_transactions;
+CREATE POLICY "Users can read own stripe_transactions"
+  ON stripe_transactions FOR SELECT
+  USING (auth.uid() = user_id);
 
 
 -- ── Vault Holdings ──────────────────────────────────────────

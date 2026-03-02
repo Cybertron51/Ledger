@@ -1,91 +1,202 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { supabase as globalSupabase } from "@/lib/supabase";
+import { createTransfer } from "@/lib/stripe";
+import { updateBalance } from "@/lib/wallet";
+import { supabaseAdmin, verifyAuth, unauthorized } from "@/lib/supabase-admin";
+
+/**
+ * TASH — Withdraw API
+ *
+ * Supports two types of withdrawals:
+ *
+ * 1. **Cash Withdrawal** (`type: "cash"`)
+ *    Moves funds from the user's Tash balance to their connected Stripe account.
+ *    Stripe then pays out to their bank automatically.
+ *
+ * 2. **Physical Card Withdrawal** (`type: "holding"`)
+ *    Marks a vaulted card as "withdrawn" and deducts a 3.5% fee.
+ *    The physical card is then shipped back to the user.
+ */
+
+const MIN_WITHDRAW_CENTS = 100;       // $1.00
+const MAX_WITHDRAW_CENTS = 1_000_000; // $10,000.00
 
 export async function POST(req: NextRequest) {
+  const auth = await verifyAuth(req);
+  if (!auth) return unauthorized();
+  if (!supabaseAdmin) {
+    return NextResponse.json({ error: "DB not configured" }, { status: 503 });
+  }
+
   try {
-    const authHeader = req.headers.get("authorization");
-
-    if (!authHeader?.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Missing or invalid authorization header" }, { status: 401 });
-    }
-    const token = authHeader.split(" ")[1];
-
     const body = await req.json();
-    const { holdingId, currentValueUsd } = body;
+    const withdrawType = body.type || "cash";
 
-    if (!holdingId || !currentValueUsd) {
-      return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+    if (withdrawType === "cash") {
+      return handleCashWithdrawal(auth.userId, body);
+    } else if (withdrawType === "holding") {
+      return handleHoldingWithdrawal(auth.userId, body);
+    } else {
+      return NextResponse.json({ error: "Invalid withdrawal type" }, { status: 400 });
     }
+  } catch (err: any) {
+    console.error("[withdraw] Error:", err.message);
+    return NextResponse.json(
+      { error: err.message || "Internal server error" },
+      { status: 500 }
+    );
+  }
+}
 
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+// ─────────────────────────────────────────────────────────
+// Cash Withdrawal (Stripe Connect Transfer)
+// ─────────────────────────────────────────────────────────
 
-    const supabaseClient = createClient(supabaseUrl, supabaseKey, {
-      global: { headers: { Authorization: `Bearer ${token}` } }
-    });
+async function handleCashWithdrawal(userId: string, body: any) {
+  const { amountCents } = body;
 
-    const { data: authData, error: authError } = await supabaseClient.auth.getUser(token);
-    if (authError || !authData?.user) {
-      return NextResponse.json({ error: "Unauthorized or invalid token" }, { status: 401 });
-    }
-    const userId = authData.user.id;
+  // Validate amount
+  if (
+    typeof amountCents !== "number" ||
+    !Number.isInteger(amountCents) ||
+    amountCents < MIN_WITHDRAW_CENTS ||
+    amountCents > MAX_WITHDRAW_CENTS
+  ) {
+    return NextResponse.json(
+      { error: `Amount must be between $${MIN_WITHDRAW_CENTS / 100} and $${MAX_WITHDRAW_CENTS / 100}` },
+      { status: 400 }
+    );
+  }
 
-    if (!globalSupabase) {
-      return NextResponse.json({ error: "Supabase not configured" }, { status: 500 });
-    }
+  // Fetch profile
+  const { data: profile, error: profileErr } = await supabaseAdmin!
+    .from("profiles")
+    .select("cash_balance, stripe_account_id, onboarding_complete")
+    .eq("id", userId)
+    .single();
 
-    // 1. Calculate Withdrawal Fee
-    const fee = currentValueUsd * 0.035;
+  if (profileErr || !profile) {
+    return NextResponse.json({ error: "Profile not found" }, { status: 404 });
+  }
 
-    // 2. Fetch User Profile to check balance
-    const { data: profile, error: profileErr } = await supabaseClient
-      .from("profiles")
-      .select("cash_balance")
-      .eq("id", userId)
-      .single();
+  // Validate Connect status
+  if (!profile.stripe_account_id || !profile.onboarding_complete) {
+    return NextResponse.json(
+      { error: "Please complete your Stripe Connect setup before withdrawing." },
+      { status: 403 }
+    );
+  }
 
-    if (profileErr || !profile) {
-      return NextResponse.json({ error: "Failed to fetch user profile" }, { status: 500 });
-    }
+  // Validate sufficient balance
+  const amountDollars = amountCents / 100;
+  const currentBalance = Number(profile.cash_balance);
 
-    if (Number(profile.cash_balance) < fee) {
-      return NextResponse.json({ error: "Insufficient funds to cover withdrawal fee" }, { status: 400 });
-    }
+  if (currentBalance < amountDollars) {
+    return NextResponse.json(
+      { error: `Insufficient balance. You have $${currentBalance.toFixed(2)} available.` },
+      { status: 400 }
+    );
+  }
 
-    // 3. Update holding status to 'withdrawn'
-    const { error: updateErr, data: updatedData } = await supabaseClient
-      .from("vault_holdings")
-      .update({ status: "withdrawn" })
-      .eq("id", holdingId)
-      .eq("user_id", userId)
-      .eq("status", "tradable")
-      .select("id");
+  // Step 1: Deduct from Tash balance
+  const newBalance = await updateBalance(userId, -amountDollars);
 
-    if (updateErr || !updatedData?.length) {
-      return NextResponse.json({ error: "Failed to update holding or holding is not tradable." }, { status: 400 });
-    }
+  // Step 2: Create Stripe Transfer
+  try {
+    const transfer = await createTransfer(
+      amountCents,
+      profile.stripe_account_id,
+      { userId, type: "withdrawal" }
+    );
 
-    // 4. Deduct fee using Service Role to bypass strict RLS if needed, or via RPC.
-    // We already checked balance under user context so doing an admin override for balance deduction.
-    const adminSupabase = createClient(supabaseUrl, process.env.SUPABASE_SERVICE_ROLE_KEY || supabaseKey);
-    const { error: deductErr } = await adminSupabase
-      .from("profiles")
-      .update({ cash_balance: Number(profile.cash_balance) - fee })
-      .eq("id", userId);
+    console.log(`[withdraw] Transfer ${transfer.id}: $${amountDollars} → ${profile.stripe_account_id}`);
 
-    if (deductErr) {
-      console.error("Failed to deduct withdrawal fee. Holding was marked withdrawn but user was not charged.", deductErr);
-    }
+    // Step 3: Log to stripe_transactions ledger
+    await supabaseAdmin!
+      .from("stripe_transactions")
+      .insert({
+        id: transfer.id,
+        user_id: userId,
+        amount: amountDollars,
+        type: "withdrawal"
+      });
 
     return NextResponse.json({
       success: true,
-      message: "Withdrawal requested successfully.",
-      feeCharged: fee
+      transferId: transfer.id,
+      amount: amountDollars,
+      newBalance,
+    });
+  } catch (stripeErr: any) {
+    // Rollback: refund deducted balance
+    console.error("[withdraw] Stripe transfer failed, rolling back:", stripeErr.message);
+    await updateBalance(userId, amountDollars);
+
+    return NextResponse.json(
+      { error: `Withdrawal failed: ${stripeErr.message}` },
+      { status: 500 }
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// Holding Withdrawal (Physical Card Shipback)
+// ─────────────────────────────────────────────────────────
+
+async function handleHoldingWithdrawal(userId: string, body: any) {
+  const { holdingId, currentValueUsd } = body;
+
+  if (!holdingId || !currentValueUsd) {
+    return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  }
+
+  // 1. Calculate 3.5% withdrawal fee
+  const fee = currentValueUsd * 0.035;
+
+  // 2. Fetch user profile to check balance covers fee
+  const { data: profile, error: profileErr } = await supabaseAdmin!
+    .from("profiles")
+    .select("cash_balance")
+    .eq("id", userId)
+    .single();
+
+  if (profileErr || !profile) {
+    return NextResponse.json({ error: "Failed to fetch user profile" }, { status: 500 });
+  }
+
+  if (Number(profile.cash_balance) < fee) {
+    return NextResponse.json({ error: "Insufficient funds to cover withdrawal fee" }, { status: 400 });
+  }
+
+  // 3. Update holding status to 'withdrawn'
+  const { error: updateErr, data: updatedData } = await supabaseAdmin!
+    .from("vault_holdings")
+    .update({ status: "withdrawn" })
+    .eq("id", holdingId)
+    .eq("user_id", userId)
+    .eq("status", "tradable")
+    .select("id");
+
+  if (updateErr || !updatedData?.length) {
+    return NextResponse.json({ error: "Failed to update holding or holding is not tradable." }, { status: 400 });
+  }
+
+  // 4. Deduct fee from balance
+  await updateBalance(userId, -fee);
+
+  // 5. Log fee to stripe_transactions ledger
+  await supabaseAdmin!
+    .from("stripe_transactions")
+    .insert({
+      id: `fee_${holdingId}_${Date.now()}`,
+      user_id: userId,
+      amount: fee,
+      type: "withdrawal"
     });
 
-  } catch (err) {
-    console.error("POST /api/withdraw error:", err);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
-  }
+  return NextResponse.json({
+    success: true,
+    message: "Withdrawal requested successfully.",
+    feeCharged: fee,
+  });
 }

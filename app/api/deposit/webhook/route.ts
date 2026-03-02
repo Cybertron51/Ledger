@@ -1,21 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import Stripe from "stripe";
+import { stripe } from "@/lib/stripe";
+import { updateBalance } from "@/lib/wallet";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "http://127.0.0.1:54321";
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-const supabaseAdmin = createClient(supabaseUrl, supabaseKey);
+/**
+ * TASH — Stripe Webhook Endpoint
+ * 
+ * This endpoint processes events from Stripe:
+ * 1. payment_intent.succeeded: Increments a user's cash_balance after a deposit.
+ * 2. account.updated: Updates a user's status when they complete Stripe onboarding.
+ */
 
-// Safely initialize stripe so the Next.js build doesn't crash
-// if STRIPE_SECRET_KEY is missing from the environment.
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY ?? "sk_test_placeholder", {
-  apiVersion: "2026-01-28.clover",
-});
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || "";
+const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
 
-// Avoid crashes during Next build if missing
-const stripeAccount = process.env.STRIPE_ACCOUNT_ID ?? "acct_placeholder";
-
-// Required by Next.js to read raw body for Stripe signature verification
 export const runtime = "nodejs";
 
 export async function POST(req: NextRequest) {
@@ -27,55 +26,120 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing signature or secret" }, { status: 400 });
   }
 
-  let event: Stripe.Event;
+  let event;
 
   try {
     event = stripe.webhooks.constructEvent(body, sig, webhookSecret);
-  } catch (err) {
-    console.error("[deposit/webhook] Signature verification failed:", err);
-    return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
+  } catch (err: any) {
+    console.error("[webhook] Signature verification failed:", err.message);
+    return NextResponse.json({ error: `Webhook Error: ${err.message}` }, { status: 400 });
   }
 
-  if (event.type === "payment_intent.succeeded") {
-    const paymentIntent = event.data.object as Stripe.PaymentIntent;
+  try {
+    switch (event.type) {
+      case "payment_intent.succeeded": {
+        const paymentIntent = event.data.object as any;
+        const userId = paymentIntent.metadata?.userId;
 
-    console.log("[deposit/webhook] payment_intent.succeeded", {
-      id: paymentIntent.id,
-      amount: paymentIntent.amount,
-      currency: paymentIntent.currency,
-      metadata: paymentIntent.metadata,
-    });
+        if (userId) {
+          const piId = paymentIntent.id;
+          const amountInDollars = paymentIntent.amount / 100;
 
-    const userId = paymentIntent.metadata?.userId;
-    if (userId) {
-      // The amount is in cents, but cash_balance is stored as decimal (dollars)
-      // Actually some people store in cents, but our schema DEFAULT is 25000.00
-      // So we assume cash_balance is in dollars.
-      const amountDollars = paymentIntent.amount / 100;
+          // IDEMPOTENCY CHECK: Use Payment Intent ID as the unique key
+          const { data: existing } = await supabaseAdmin
+            .from("stripe_transactions")
+            .select("id")
+            .eq("id", piId)
+            .single();
 
-      const { data: profile, error: readErr } = await supabaseAdmin
-        .from("profiles")
-        .select("cash_balance")
-        .eq("id", userId)
-        .single();
+          if (existing) {
+            console.log(`[webhook] Transaction ${piId} already processed, skipping.`);
+            break;
+          }
 
-      if (readErr) {
-        console.error(`[deposit/webhook] Failed to read profile for user ${userId}:`, readErr);
-      } else if (profile) {
-        const newBalance = Number(profile.cash_balance) + amountDollars;
-        const { error: updateErr } = await supabaseAdmin
-          .from("profiles")
-          .update({ cash_balance: newBalance })
-          .eq("id", userId);
+          // 1. Log the transaction (idempotency marker)
+          await supabaseAdmin
+            .from("stripe_transactions")
+            .insert({
+              id: piId,
+              user_id: userId,
+              amount: amountInDollars,
+              type: "deposit"
+            });
 
-        if (updateErr) {
-          console.error(`[deposit/webhook] Failed to update balance for user ${userId}:`, updateErr);
-        } else {
-          console.log(`[deposit/webhook] Updated balance for user ${userId} to ${newBalance}`);
+          // 2. Credit the balance
+          await updateBalance(userId, amountInDollars);
+          console.log(`[webhook] Deposit credited (PI): ${amountInDollars} to user ${userId}`);
         }
+        break;
       }
-    }
-  }
 
-  return NextResponse.json({ received: true });
+      case "checkout.session.completed": {
+        const session = event.data.object as any;
+        const userId = session.metadata?.userId;
+
+        if (userId && session.payment_status === "paid" && session.payment_intent) {
+          const piId = typeof session.payment_intent === "string"
+            ? session.payment_intent
+            : session.payment_intent.id;
+          const amountInDollars = (session.amount_total || 0) / 100;
+
+          // IDEMPOTENCY CHECK: Same Payment Intent ID as above
+          const { data: existing } = await supabaseAdmin
+            .from("stripe_transactions")
+            .select("id")
+            .eq("id", piId)
+            .single();
+
+          if (existing) {
+            console.log(`[webhook] Transaction ${piId} already processed (via checkout), skipping.`);
+            break;
+          }
+
+          await supabaseAdmin
+            .from("stripe_transactions")
+            .insert({
+              id: piId,
+              user_id: userId,
+              amount: amountInDollars,
+              type: "deposit"
+            });
+
+          await updateBalance(userId, amountInDollars);
+          console.log(`[webhook] Deposit credited (Checkout fallback): ${amountInDollars} to user ${userId}`);
+        }
+        break;
+      }
+
+      case "account.updated": {
+        const account = event.data.object as any;
+        const userId = account.metadata?.userId;
+
+        // Strict verification: require both payouts and charges to be active
+        const isFullyVerified = !!(account.details_submitted && account.payouts_enabled && account.charges_enabled);
+
+        if (userId) {
+          const { error: updateErr } = await supabaseAdmin
+            .from("profiles")
+            .update({ onboarding_complete: isFullyVerified })
+            .eq("id", userId);
+
+          if (updateErr) {
+            console.error(`[webhook] Failed to update onboarding status for user ${userId}:`, updateErr);
+          } else {
+            console.log(`[webhook] Onboarding status updated for user ${userId}: ${isFullyVerified}`);
+          }
+        }
+        break;
+      }
+
+      default:
+        console.log(`[webhook] Unhandled event type: ${event.type}`);
+    }
+
+    return NextResponse.json({ received: true });
+  } catch (err: any) {
+    console.error("[webhook] Processing error:", err.message);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+  }
 }

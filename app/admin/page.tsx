@@ -88,27 +88,56 @@ export default function AdminPage() {
                             <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 16, background: colors.surfaceOverlay, border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16 }}>
 
                                 {/* Image */}
-                                <div style={{ width: 60, height: 84, borderRadius: 6, background: colors.surface, flexShrink: 0, overflow: "hidden", border: `1px solid ${colors.borderSubtle}` }}>
+                                <div style={{ width: 140, height: 196, borderRadius: 8, background: colors.surface, flexShrink: 0, overflow: "hidden", border: `1px solid ${colors.borderSubtle}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
                                     {item.image_url ? (
                                         // eslint-disable-next-line @next/next/no-img-element
-                                        <img src={item.image_url} alt="card" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                                    ) : null}
+                                        <img src={item.image_url} alt="card" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+                                    ) : (
+                                        <p style={{ fontSize: 11, color: colors.textMuted }}>No Image</p>
+                                    )}
                                 </div>
 
                                 {/* Details */}
-                                <div style={{ flex: 1 }}>
-                                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                                        <span style={{ fontSize: 15, fontWeight: 700, color: colors.textPrimary }}>{item.symbol}</span>
-                                        <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 6px", borderRadius: 4, background: item.status === "shipped" ? "rgba(245,200,66,0.15)" : "rgba(245,130,66,0.15)", color: item.status === "shipped" ? "#F5C842" : "#F58242", textTransform: "uppercase" }}>
-                                            {item.status === "shipped" ? "Shipped" : "Pending"}
-                                        </span>
+                                <div style={{ flex: 1, padding: '8px 0' }}>
+                                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 12 }}>
+                                        <div>
+                                            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                                                <span style={{ fontSize: 18, fontWeight: 800, color: colors.textPrimary }}>{item.name || "Unknown Card"}</span>
+                                                <span style={{ fontSize: 11, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: item.status === "shipped" ? "rgba(245,200,66,0.15)" : "rgba(245,130,66,0.15)", color: item.status === "shipped" ? "#F5C842" : "#F58242", textTransform: "uppercase" }}>
+                                                    {item.status === "shipped" ? "Shipped" : "Pending"}
+                                                </span>
+                                            </div>
+                                            <p style={{ fontSize: 14, color: colors.textSecondary, marginBottom: 4 }}>
+                                                {item.set || "Unknown Set"}
+                                            </p>
+                                            <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+                                                {item.grade && (
+                                                    <span style={{ fontSize: 12, fontWeight: 600, color: colors.green, background: `${colors.green}15`, padding: '2px 8px', borderRadius: 4 }}>
+                                                        PSA {item.grade}
+                                                    </span>
+                                                )}
+                                                {item.cert_number && (
+                                                    <span style={{ fontSize: 12, color: colors.textMuted, fontFamily: "monospace" }}>
+                                                        Cert: {item.cert_number}
+                                                    </span>
+                                                )}
+                                                <span style={{ fontSize: 12, color: colors.textMuted }}>
+                                                    Symbol: <span style={{ fontWeight: 600 }}>{item.symbol}</span>
+                                                </span>
+                                            </div>
+                                        </div>
+
+                                        <div style={{ textAlign: "right" }}>
+                                            <p style={{ fontSize: 12, color: colors.textSecondary, margin: "0 0 4px 0" }}>Declared Value</p>
+                                            <p style={{ fontSize: 16, fontWeight: 700, color: colors.textPrimary, margin: 0 }}>{formatCurrency(Number(item.acquisition_price))}</p>
+                                        </div>
                                     </div>
-                                    <p style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 2 }}>
-                                        Owner: <span style={{ color: colors.textPrimary, fontWeight: 500 }}>{item.profiles?.name || item.profiles?.email || "Unknown"}</span>
-                                    </p>
-                                    <p style={{ fontSize: 13, color: colors.textSecondary }}>
-                                        Acquisition Price: <span style={{ color: colors.textPrimary, fontWeight: 500 }}>{formatCurrency(Number(item.acquisition_price))}</span>
-                                    </p>
+
+                                    <div style={{ borderTop: `1px solid ${colors.borderSubtle}`, paddingTop: 12, marginTop: 12 }}>
+                                        <p style={{ fontSize: 13, color: colors.textSecondary, margin: 0 }}>
+                                            Owner: <span style={{ color: colors.textPrimary, fontWeight: 600 }}>{item.profiles?.name || item.profiles?.email || "Unknown"}</span>
+                                        </p>
+                                    </div>
                                 </div>
 
                                 {/* Actions */}

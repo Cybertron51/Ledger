@@ -42,11 +42,12 @@ function AccountChip() {
 
   if (!user) return null;
 
+  const isSetup = !!user.stripeAccountId;
+
   return (
     <div className="relative">
-      <button
-        onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-3 rounded-[12px] border px-[14px] py-[8px] transition-all duration-150 hover:bg-[#1E1E1E]"
+      <div
+        className="flex items-center gap-3 rounded-[12px] border px-[14px] py-[8px] transition-all duration-150"
         style={{
           borderColor: colors.border,
           background: colors.surface,
@@ -63,13 +64,18 @@ function AccountChip() {
           </span>
         </div>
 
+        {/* Connect Button (if not fully verified) removed to decouple from Stripe */}
+
         {/* Divider */}
         <span className="h-8 w-px" style={{ background: colors.border }} />
 
         {/* Avatar & chevron */}
-        <div className="flex items-center gap-2">
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="flex items-center gap-2 outline-none"
+        >
           <span
-            className="flex h-[28px] w-[28px] items-center justify-center rounded-full text-[12px] font-black shadow-sm"
+            className="flex h-[28px] w-[28px] items-center justify-center rounded-full text-[12px] font-black shadow-sm transition-transform hover:scale-105"
             style={{ background: colors.green, color: colors.textInverse }}
           >
             {user.initials}
@@ -83,8 +89,8 @@ function AccountChip() {
               transition: "transform 0.15s ease",
             }}
           />
-        </div>
-      </button>
+        </button>
+      </div>
 
       {/* Dropdown */}
       {open && (
@@ -140,6 +146,7 @@ function AccountChip() {
               { label: "Account Settings", href: "/account" },
               { label: "Transaction History", href: "/history" },
               { label: "Deposit Funds", href: "/deposit" },
+              { label: "Withdraw Funds", href: "/withdraw" },
             ].map((item) => (
               <Link
                 key={item.href}
