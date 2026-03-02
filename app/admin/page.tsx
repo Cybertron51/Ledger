@@ -110,7 +110,7 @@ export default function AdminPage() {
 
                                     {/* PSA Official Image */}
                                     <div>
-                                        <p style={{ fontSize: 11, fontWeight: 600, color: colors.blue, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.5px" }}>PSA Record</p>
+                                        <p style={{ fontSize: 11, fontWeight: 600, color: colors.gold, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.5px" }}>PSA Record</p>
                                         <div style={{ width: 140, height: 196, borderRadius: 8, background: colors.surface, overflow: "hidden", border: `1px solid ${colors.borderSubtle}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
                                             {item.image_url ? (
                                                 // eslint-disable-next-line @next/next/no-img-element
