@@ -17,7 +17,7 @@ import Image from "next/image";
 
 import { tickPrice, generateHistory, type TimeRange, type AssetData } from "@/lib/market-data";
 import { PriceChart } from "@/components/market/PriceChart";
-import { getScannedHoldings, type VaultHolding } from "@/lib/vault-data";
+import { type VaultHolding } from "@/lib/vault-data";
 import { updateVaultHoldingStatus } from "@/lib/db/vault";
 import { usePortfolio } from "@/lib/portfolio-context";
 import { useAuth } from "@/lib/auth";
@@ -75,7 +75,7 @@ export default function PortfolioPage() {
   const [activities, setActivities] = useState<Activity[]>([]);
   const searchRef = useRef<HTMLInputElement>(null);
 
-  // ── Load market metadata ──────────────────────────────
+  // Load market metadata
   useEffect(() => {
     async function fetchAssets() {
       setIsLoading(true);
@@ -90,22 +90,7 @@ export default function PortfolioPage() {
     fetchAssets();
   }, []);
 
-  // ── Load scanned in-transit cards from localStorage ───
-  useEffect(() => {
-    const scanned = getScannedHoldings();
-    if (scanned.length === 0) return;
-    const existingIds = new Set(holdings.map((h) => h.id));
-    scanned.filter((h) => !existingIds.has(h.id)).forEach(addHolding);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
-  // ── Live price tick ────────────────────────────────────
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setAssets((prev) => prev.map((a) => (Math.random() > 0.45 ? a : tickPrice(a))));
-    }, 2500);
-    return () => clearInterval(interval);
-  }, []);
 
   // ── Derived values ─────────────────────────────────────
   const priceMap = useMemo(

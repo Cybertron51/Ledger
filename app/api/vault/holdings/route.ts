@@ -15,19 +15,17 @@ export async function GET(req: NextRequest) {
         .select(`
       id,
       symbol,
+      name,
+      set_name,
+      year,
+      psa_grade,
       status,
       acquisition_price,
       listing_price,
       cert_number,
       image_url,
       raw_image_url,
-      created_at,
-      cards (
-        name,
-        psa_grade,
-        set_name,
-        year
-      )
+      created_at
     `)
         .eq("user_id", auth.userId)
         .order("created_at", { ascending: false });
@@ -38,14 +36,13 @@ export async function GET(req: NextRequest) {
 
     // Map to frontend-friendly format
     const holdings = (data || []).map((row: Record<string, unknown>) => {
-        const cards = row.cards as Record<string, unknown> | null;
         return {
             id: row.id,
-            name: (cards?.name as string) || "Unknown Card",
+            name: (row.name as string) || "Unknown Card",
             symbol: row.symbol,
-            grade: (cards?.psa_grade as number) || 9,
-            set: (cards?.set_name as string) || "Unknown Set",
-            year: (cards?.year as number) || new Date().getFullYear(),
+            grade: (row.psa_grade as number) || 9,
+            set: (row.set_name as string) || "Unknown Set",
+            year: (row.year as number) || new Date().getFullYear(),
             acquisitionPrice: Number(row.acquisition_price),
             status: row.status,
             dateDeposited: new Date(row.created_at as string).toISOString().split("T")[0],
@@ -136,6 +133,10 @@ export async function POST(req: NextRequest) {
             cert_number: certNumber || null,
             image_url: imageUrl || null,
             raw_image_url: rawImageUrl || null,
+            name: cardMeta?.name || "Unknown Card",
+            set_name: cardMeta?.set || "Unknown Set",
+            year: cardMeta?.year || null,
+            psa_grade: cardMeta?.grade || null,
         })
         .select()
         .single();

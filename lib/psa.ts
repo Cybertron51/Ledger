@@ -37,6 +37,34 @@ export async function fetchPSAImage(certNumber: string): Promise<string | null> 
 }
 
 /**
+ * Fetches the metadata (Name, Set, Year, Grade) for a PSA certification number
+ * from the PSA Public API.
+ */
+export async function fetchPSAMetadata(certNumber: string): Promise<any | null> {
+    const token = process.env.PSA_API_TOKEN;
+    if (!token) return null;
+
+    try {
+        const res = await fetch(`https://api.psacard.com/publicapi/cert/GetByCertNumber/${certNumber}`, {
+            headers: {
+                Authorization: `Bearer ${token}`
+            }
+        });
+
+        if (!res.ok) {
+            console.error(`PSA Metadata API error for cert ${certNumber}: ${res.statusText}`);
+            return null;
+        }
+
+        const data = await res.json();
+        return data.PSACert;
+    } catch (error) {
+        console.error("Error fetching PSA metadata:", error);
+        return null;
+    }
+}
+
+/**
  * Downloads an image from a URL and uploads it to the Supabase 'card_images' bucket.
  * Returns the public URL of the uploaded image.
  */

@@ -44,3 +44,8 @@ next-env.d.ts
 # supabase
 supabase/.temp/
 supabase/.branches/
+
+# AI Prompts
+RECREATE_PROMPT.md
+PRODUCTION.md
+BETA_TESTING.md

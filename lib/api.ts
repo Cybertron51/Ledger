@@ -24,6 +24,11 @@ export async function api(
         ...(options?.headers as Record<string, string>),
     };
 
+    // Attach anti-scraping secret
+    if (process.env.NEXT_PUBLIC_API_SECRET) {
+        headers["x-api-secret"] = process.env.NEXT_PUBLIC_API_SECRET;
+    }
+
     // Attach JWT if user is logged in
     if (!options?.skipAuth && supabase) {
         const {

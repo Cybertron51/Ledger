@@ -175,6 +175,14 @@ export async function DELETE(req: NextRequest) {
 }
 
 export async function GET(req: NextRequest) {
+  // Anti-scraping check
+  const apiSecret = process.env.NEXT_PUBLIC_API_SECRET;
+  const clientSecret = req.headers.get("x-api-secret");
+
+  if (apiSecret && clientSecret !== apiSecret) {
+    return NextResponse.json({ error: "Forbidden: Invalid API Secret" }, { status: 403 });
+  }
+
   if (!globalSupabase) return NextResponse.json({ orders: [], count: 0 });
 
   const { searchParams } = new URL(req.url);

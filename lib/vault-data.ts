@@ -22,14 +22,5 @@ export interface VaultHolding {
   listingPrice?: number;
 }
 
-/** Reads scanned cards pre-registered via /scan from localStorage. Safe to call on server (returns []). */
-export function getScannedHoldings(): VaultHolding[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem("tash-scanned-cards");
-    return raw ? (JSON.parse(raw) as VaultHolding[]) : [];
-  } catch {
-    return [];
-  }
-}
+
 

@@ -215,6 +215,10 @@ CREATE TABLE IF NOT EXISTS vault_holdings (
   user_id          UUID        NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
   card_id          UUID        REFERENCES cards(id) ON DELETE RESTRICT,
   symbol           TEXT        NOT NULL,                      -- denormalized from cards for easy lookup
+  name             TEXT,                                      -- denormalized card name
+  set_name         TEXT,                                      -- denormalized set name
+  year             INTEGER,                                   -- denormalized release year
+  psa_grade        INTEGER,                                   -- denormalized PSA grade
   
   status           TEXT        NOT NULL DEFAULT 'pending_authentication'
                                CHECK (status IN (

@@ -19,6 +19,7 @@ import {
   RotateCcw,
   Loader2,
   AlertCircle,
+  XCircle,
 } from "lucide-react";
 import { colors, layout } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
@@ -285,7 +286,7 @@ export default function ScanPage() {
       try {
         const codeReader = new BrowserMultiFormatReader();
         const htmlImageObj = new Image();
-        htmlImageObj.src = item.blobUrl;
+        htmlImageObj.src = `data:${item.mimeType};base64,${item.imageBase64}`;
         await new Promise((resolve) => {
           htmlImageObj.onload = resolve;
         });
@@ -388,15 +389,6 @@ export default function ScanPage() {
 
         // 2. Update local context immediately
         addHolding(newHolding);
-
-        // (Optional) still save to local storage as backup for unauth users, though we require auth now
-        const existing: VaultHolding[] = JSON.parse(
-          localStorage.getItem("tash-scanned-cards") ?? "[]"
-        );
-        localStorage.setItem(
-          "tash-scanned-cards",
-          JSON.stringify([...existing, newHolding])
-        );
       } catch (e) {
         console.error("Failed to add to vault:", e);
       }
@@ -971,21 +963,21 @@ function ResultStage({
                 key={item.id}
                 style={{
                   display: "flex",
-                  gap: 12,
-                  padding: 12,
+                  gap: 16,
+                  padding: 16,
                   background: isValid ? colors.surface : "rgba(255,59,48,0.04)",
-                  borderRadius: 12,
+                  borderRadius: 16,
                   border: `1px solid ${isValid ? colors.border : colors.red + "44"}`,
-                  alignItems: "center",
+                  alignItems: "flex-start",
                   opacity: isValid ? 1 : 0.8,
                 }}
               >
-                {/* Thumb */}
+                {/* Thumb - Larger */}
                 <div
                   style={{
-                    width: 48,
-                    height: 68,
-                    borderRadius: 6,
+                    width: 120,
+                    height: 168,
+                    borderRadius: 8,
                     overflow: "hidden",
                     border: `1px solid ${colors.border}`,
                     flexShrink: 0,
@@ -993,40 +985,46 @@ function ResultStage({
                   }}
                 >
                   <img
-                    src={item.cardImageUrl || item.thumbDataUrl}
+                    src={item.cardImageUrl || item.blobUrl}
                     alt={result.name}
-                    style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    style={{ width: "100%", height: "100%", objectFit: "contain" }}
                   />
                 </div>
 
                 {/* Info */}
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0, color: colors.textPrimary, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {result.year ? `${result.year} ` : ""}{result.name}
-                  </h3>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 4 }}>
-                    <span style={{ fontSize: 11, fontWeight: 700, color: gc, padding: "2px 6px", background: `${gc}18`, borderRadius: 4 }}>
-                      PSA {result.estimatedGrade}
-                    </span>
-                    <span style={{ fontSize: 11, color: colors.textMuted }}>
-                      {result.set}
-                    </span>
+                <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div>
+                    <h3 style={{ fontSize: 18, fontWeight: 700, margin: "0 0 4px", color: colors.textPrimary, whiteSpace: "normal", wordBreak: "break-word" }}>
+                      {result.year ? `${result.year} ` : ""}{result.name}
+                    </h3>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                      {result.estimatedGrade != null && (
+                        <span style={{ fontSize: 13, fontWeight: 700, color: gc, padding: "2px 8px", background: `${gc}18`, borderRadius: 6 }}>
+                          PSA {result.estimatedGrade}
+                        </span>
+                      )}
+                      <span style={{ fontSize: 13, color: colors.textSecondary, fontWeight: 500 }}>
+                        {result.set}
+                      </span>
+                    </div>
                   </div>
-                  {!isValid && (
-                    <div style={{ marginTop: 8 }}>
-                      <p style={{ fontSize: 11, color: colors.red, margin: "0", fontWeight: 600 }}>
-                        Unacceptable Scan
-                      </p>
-                      <p style={{ fontSize: 11, color: colors.textSecondary, margin: "2px 0 0" }}>
-                        {(!result.isFullSlabVisible) ? "The entire PSA slab must be visible." : "AI confidence was too low."}
-                      </p>
+
+                  {result.certNumber && (
+                    <div style={{ fontSize: 12, color: colors.textMuted, fontFamily: "monospace", letterSpacing: "0.5px" }}>
+                      CERT #{result.certNumber}
                     </div>
                   )}
-                  {isValid && item.pricing && (
-                    <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
-                      {item.pricing.low && <span style={{ fontSize: 11, color: colors.textSecondary }}>Low: ${Number(item.pricing.low).toFixed(2)}</span>}
-                      {item.pricing.mid && <span style={{ fontSize: 11, color: colors.textPrimary, fontWeight: 500 }}>Mid: ${Number(item.pricing.mid).toFixed(2)}</span>}
-                      {item.pricing.high && <span style={{ fontSize: 11, color: colors.green }}>High: ${Number(item.pricing.high).toFixed(2)}</span>}
+
+                  {!isValid && (
+                    <div style={{ marginTop: 8, padding: 8, background: "rgba(255,59,48,0.1)", borderRadius: 8 }}>
+                      <p style={{ fontSize: 12, color: colors.red, margin: "0", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
+                        <XCircle size={14} /> Unacceptable Scan
+                      </p>
+                      <p style={{ fontSize: 12, color: colors.textPrimary, margin: "4px 0 0" }}>
+                        {(!result.isFullSlabVisible)
+                          ? "The entire PSA slab must be visible."
+                          : "Could not read or verify Barcode/Certification Number."}
+                      </p>
                     </div>
                   )}
                 </div>
@@ -1062,7 +1060,7 @@ function ResultStage({
                 }}
               >
                 <img
-                  src={errItem.thumbDataUrl}
+                  src={errItem.blobUrl}
                   alt="Error"
                   style={{ width: "100%", height: "100%", objectFit: "cover", opacity: 0.8 }}
                 />

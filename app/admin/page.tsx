@@ -10,7 +10,7 @@ import { useAuth } from "@/lib/auth";
 import { SignInModal } from "@/components/auth/SignInModal";
 
 export default function AdminPage() {
-    const { isAuthenticated } = useAuth();
+    const { isAuthenticated, user } = useAuth();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const [shippedItems, setShippedItems] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -20,17 +20,21 @@ export default function AdminPage() {
         async function fetchShipped() {
             setIsLoading(true);
             try {
-                const data = await apiGet<any[]>("/api/admin/approve");
+                const data = await apiGet<any[]>(`/api/admin/approve?t=${Date.now()}`);
                 setShippedItems(data || []);
-            } catch {
+            } catch (err: any) {
+                // If it's a 403, fail silently for non-admins so we don't spam alerts.
+                if (!err.message.includes("403")) {
+                    alert(`Error loading admin data: ${err.message}`);
+                }
                 setShippedItems([]);
             }
             setIsLoading(false);
         }
 
-        if (isAuthenticated) fetchShipped();
+        if (isAuthenticated && user?.email === "demo@tash.com") fetchShipped();
         else setIsLoading(false);
-    }, [isAuthenticated]);
+    }, [isAuthenticated, user?.email]);
 
     async function approveItem(id: string) {
         // Optimistic UI
@@ -43,7 +47,7 @@ export default function AdminPage() {
         }
     }
 
-    if (!isAuthenticated && !isLoading) {
+    if ((!isAuthenticated || user?.email !== "demo@tash.com") && !isLoading) {
         return (
             <div
                 className="flex flex-col items-center justify-center gap-4"
@@ -51,13 +55,15 @@ export default function AdminPage() {
             >
                 <div style={{ padding: 32, borderRadius: 16, border: `1px solid ${colors.border}`, background: colors.surfaceOverlay, textAlign: "center", maxWidth: 400 }}>
                     <h2 style={{ color: colors.textPrimary, fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Admin Access Required</h2>
-                    <p style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 24 }}>You must be logged in to access the admin dashboard.</p>
-                    <button
-                        onClick={() => setShowSignIn(true)}
-                        style={{ width: "100%", background: colors.green, color: colors.background, padding: "12px 16px", borderRadius: 10, fontSize: 13, fontWeight: 700, transition: "transform 0.15s" }}
-                    >
-                        Sign In
-                    </button>
+                    <p style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 24 }}>You must be logged in as an administrator to access this dashboard.</p>
+                    {!isAuthenticated && (
+                        <button
+                            onClick={() => setShowSignIn(true)}
+                            style={{ width: "100%", background: colors.green, color: colors.background, padding: "12px 16px", borderRadius: 10, fontSize: 13, fontWeight: 700, transition: "transform 0.15s" }}
+                        >
+                            Sign In
+                        </button>
+                    )}
                 </div>
                 {showSignIn && <SignInModal onClose={() => setShowSignIn(false)} />}
             </div>
@@ -87,14 +93,33 @@ export default function AdminPage() {
                         {shippedItems.map((item) => (
                             <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 16, background: colors.surfaceOverlay, border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16 }}>
 
-                                {/* Image */}
-                                <div style={{ width: 140, height: 196, borderRadius: 8, background: colors.surface, flexShrink: 0, overflow: "hidden", border: `1px solid ${colors.borderSubtle}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                    {item.image_url ? (
-                                        // eslint-disable-next-line @next/next/no-img-element
-                                        <img src={item.image_url} alt="card" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
-                                    ) : (
-                                        <p style={{ fontSize: 11, color: colors.textMuted }}>No Image</p>
-                                    )}
+                                {/* Images Grid */}
+                                <div style={{ display: "flex", gap: 12, flexShrink: 0 }}>
+                                    {/* User's Raw Scan */}
+                                    <div>
+                                        <p style={{ fontSize: 11, fontWeight: 600, color: colors.textSecondary, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.5px" }}>Raw Upload</p>
+                                        <div style={{ width: 140, height: 196, borderRadius: 8, background: colors.surface, overflow: "hidden", border: `1px solid ${colors.borderSubtle}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                            {item.raw_image_url ? (
+                                                // eslint-disable-next-line @next/next/no-img-element
+                                                <img src={item.raw_image_url} alt="Raw Scan" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+                                            ) : (
+                                                <p style={{ fontSize: 11, color: colors.textMuted }}>No Image</p>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    {/* PSA Official Image */}
+                                    <div>
+                                        <p style={{ fontSize: 11, fontWeight: 600, color: colors.blue, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.5px" }}>PSA Record</p>
+                                        <div style={{ width: 140, height: 196, borderRadius: 8, background: colors.surface, overflow: "hidden", border: `1px solid ${colors.borderSubtle}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                            {item.image_url ? (
+                                                // eslint-disable-next-line @next/next/no-img-element
+                                                <img src={item.image_url} alt="PSA Match" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+                                            ) : (
+                                                <p style={{ fontSize: 11, color: colors.textMuted }}>No Match</p>
+                                            )}
+                                        </div>
+                                    </div>
                                 </div>
 
                                 {/* Details */}
