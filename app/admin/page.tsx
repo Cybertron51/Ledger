@@ -32,7 +32,7 @@ export default function AdminPage() {
             setIsLoading(false);
         }
 
-        if (isAuthenticated && user?.email === "demo@tash.com") fetchShipped();
+        if (isAuthenticated && user?.email === "derekyp9@gmail.com") fetchShipped();
         else setIsLoading(false);
     }, [isAuthenticated, user?.email]);
 
@@ -47,7 +47,7 @@ export default function AdminPage() {
         }
     }
 
-    if ((!isAuthenticated || user?.email !== "demo@tash.com") && !isLoading) {
+    if ((!isAuthenticated || user?.email !== "derekyp9@gmail.com") && !isLoading) {
         return (
             <div
                 className="flex flex-col items-center justify-center gap-4"

@@ -11,8 +11,9 @@ export const dynamic = "force-dynamic";
 export async function PATCH(req: NextRequest) {
     const auth = await verifyAuth(req);
     if (!auth) return unauthorized();
-    if (auth.email !== "demo@tash.com") {
-        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    // 2. Check if user is admin (hardcoded for now)
+    if (auth.email !== "derekyp9@gmail.com") {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
     if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
 
