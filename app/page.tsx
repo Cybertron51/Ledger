@@ -26,7 +26,7 @@ const CELL_COUNT = 60;
 const CELL_ASPECT = "10 / 17";
 
 // Static initial card assignment — each cell gets a card from the pool
-const INITIAL_CARDS = Array.from({ length: CELL_COUNT }, (_, i) => i % TOTAL_CARDS);
+const INITIAL_CARDS = TOTAL_CARDS > 0 ? Array.from({ length: CELL_COUNT }, (_, i) => i % TOTAL_CARDS) : [];
 
 export default function LandingPage() {
     const [showSignIn, setShowSignIn] = useState(false);
@@ -36,51 +36,55 @@ export default function LandingPage() {
     return (
         <div style={{ position: "fixed", inset: 0, zIndex: 200, background: "#000", overflow: "hidden" }}>
 
-            {/* ── Card grid ── */}
-            <div
-                style={{
-                    position: "absolute",
-                    // 2px bleed on every edge so no hairline gaps appear at screen borders
-                    inset: "-2px",
-                    display: "grid",
-                    gridTemplateColumns: `repeat(${COLS}, 1fr)`,
-                    gap: "4px",
-                    alignContent: "start",
-                }}
-            >
-                {INITIAL_CARDS.map((cardIdx, i) => (
+            {/* ── Card grid and overlay ── */}
+            {TOTAL_CARDS >= 5 && (
+                <>
                     <div
-                        key={i}
                         style={{
-                            aspectRatio: CELL_ASPECT,
-                            alignSelf: "start",
-                            overflow: "hidden",
+                            position: "absolute",
+                            // 2px bleed on every edge so no hairline gaps appear at screen borders
+                            inset: "-2px",
+                            display: "grid",
+                            gridTemplateColumns: `repeat(${COLS}, 1fr)`,
+                            gap: "4px",
+                            alignContent: "start",
                         }}
                     >
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img
-                            src={CARDS[cardIdx]}
-                            alt=""
-                            style={{
-                                width: "100%",
-                                height: "100%",
-                                objectFit: "cover",
-                                display: "block",
-                            }}
-                        />
+                        {INITIAL_CARDS.map((cardIdx, i) => (
+                            <div
+                                key={i}
+                                style={{
+                                    aspectRatio: CELL_ASPECT,
+                                    alignSelf: "start",
+                                    overflow: "hidden",
+                                }}
+                            >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                    src={CARDS[cardIdx]}
+                                    alt=""
+                                    style={{
+                                        width: "100%",
+                                        height: "100%",
+                                        objectFit: "cover",
+                                        display: "block",
+                                    }}
+                                />
+                            </div>
+                        ))}
                     </div>
-                ))}
-            </div>
 
-            {/* ── Dark centre overlay for text legibility ── */}
-            <div
-                style={{
-                    position: "absolute",
-                    inset: 0,
-                    background:
-                        "radial-gradient(ellipse 70% 60% at 50% 48%, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.35) 65%, rgba(0,0,0,0.6) 100%)",
-                }}
-            />
+                    {/* ── Dark centre overlay for text legibility ── */}
+                    <div
+                        style={{
+                            position: "absolute",
+                            inset: 0,
+                            background:
+                                "radial-gradient(ellipse 70% 60% at 50% 48%, rgba(0,0,0,0.82) 0%, rgba(0,0,0,0.35) 65%, rgba(0,0,0,0.6) 100%)",
+                        }}
+                    />
+                </>
+            )}
 
             {/* ── Content ── */}
             <div
