@@ -47,6 +47,9 @@ export const metadata: Metadata = {
     "sports cards",
     "collectibles market",
   ],
+  verification: {
+    google: "UrU2uYL1CDVRP1s7NspoaCL-y2uiUk5jCf_mIJT9KXY",
+  },
   openGraph: {
     title: "tash — Trading Card Exchange",
     description: "Institutional-grade trading for PSA-graded collectibles.",
