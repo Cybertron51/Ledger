@@ -48,6 +48,10 @@ export async function PATCH(req: NextRequest) {
         .single();
 
     if (error) {
+        // Postgres unique-constraint violation
+        if (error.code === "23505" || error.message?.includes("duplicate key") || error.message?.includes("unique constraint")) {
+            return NextResponse.json({ error: "username already taken" }, { status: 409 });
+        }
         return NextResponse.json({ error: error.message }, { status: 500 });
     }
 

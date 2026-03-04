@@ -19,12 +19,22 @@ function buildPrompt() {
 Return exactly this structure:
 {
   "isFullSlabVisible": true,
-  "certNumber": "12345678"
+  "certNumber": "12345678",
+  "cardName": "Charizard-Holo",
+  "setName": "Base Set",
+  "year": 1999,
+  "psaGrade": 10,
+  "category": "pokemon"
 }
 
 Valid values:
 - isFullSlabVisible: boolean. Set to true if the PSA label and the trading card body are clearly visible. It is OKAY if the very outer plastic edges of the slab are slightly cropped, as long as the label text and the card art are fully visible. If the card itself is cut off or the label is missing, set to false.
 - certNumber: Extract the 7 or 8-digit certification number from the PSA label. If you cannot read it clearly, return null.
+- cardName: Read the card name from the PSA label text. The PSA label always includes the card name (e.g. "Charizard-Holo", "Blastoise", "Mickey Mouse"). If the PSA label is not readable, identify the card from the card art itself. Always return a descriptive name, never return null or "Unknown".
+- setName: Read the set/brand name from the PSA label (e.g. "Base Set", "Pokemon Game", "Topps Chrome"). If not readable, make your best guess based on the card art. Never return null.
+- year: Read the year from the PSA label. If not readable, estimate from the card design. Return as a number.
+- psaGrade: Read the numeric grade from the PSA label. The grade is the large number on the label, often preceded by a text descriptor like "GEM MT" (10), "MINT" (9), "NM-MT" (8), "NM" (7), etc. Return just the number (e.g. 10, 9, 8). If not readable, return null.
+- category: "pokemon" if it's a Pokémon card, "sports" if it's a sports card (baseball, basketball, football, etc), "other" for anything else.
 
 Return ONLY the JSON.`;
 }
@@ -48,7 +58,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 1. Ask Gemini ONLY if the slab is fully visible
+    // 1. Ask Gemini to identify the card
     const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
     const result = await model.generateContent([
       { inlineData: { mimeType, data: imageBase64 } },
@@ -65,32 +75,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Failed to parse AI response" }, { status: 422 });
     }
 
-    // Default card object structure based on the new flow
+    // Default card object — use AI-extracted name as starting point
     const extractedCert = certNumberLocalScan || aiResult.certNumber || null;
     const card: any = {
       isFullSlabVisible: !!aiResult.isFullSlabVisible,
       certNumber: extractedCert,
-      name: "Unknown Card",
-      set: "Unknown Set",
-      year: null,
+      name: aiResult.cardName || "Unknown Card",
+      set: aiResult.setName || "Unknown Set",
+      year: aiResult.year || null,
       cardNumber: null,
-      estimatedGrade: null,
-      category: "pokemon"
+      estimatedGrade: aiResult.psaGrade || null,
+      category: aiResult.category || "pokemon"
     };
 
-    // 2. Lookup actual data using PSA if Cert exists
+    // 2. Lookup actual data using PSA if Cert exists — overrides AI with authoritative data
     if (extractedCert) {
       console.log(`Fetching exact PSA metadata for cert: ${extractedCert}`);
       const psaData = await fetchPSAMetadata(extractedCert);
 
       if (psaData) {
-        card.name = psaData.Subject || psaData.Player || "Unknown Card";
-        card.set = psaData.CardSet || psaData.Brand || "Unknown Set";
-        card.year = parseInt(psaData.Year) || null;
+        // Use PSA data when available, but fall back to AI-extracted values instead of "Unknown"
+        card.name = psaData.Subject || psaData.Player || card.name;
+        card.set = psaData.CardSet || psaData.Brand || card.set;
+        card.year = parseInt(psaData.Year) || card.year;
         card.cardNumber = psaData.CardNumber || null;
-        card.estimatedGrade = psaData.CardGrade ? parseInt(psaData.CardGrade.replace(/\D/g, "")) || 9 : 9;
+        card.estimatedGrade = psaData.CardGrade ? parseInt(psaData.CardGrade.replace(/\D/g, "")) || card.estimatedGrade || 9 : card.estimatedGrade || 9;
 
-        // simple heuristic
+        // Refine category from PSA data if available
         if ((psaData.Subject || "").toLowerCase().includes("pokemon") || (psaData.CardSet || "").toLowerCase().includes("pokemon")) card.category = "pokemon";
         else if ((psaData.Brand || "").toLowerCase().includes("panini") || (psaData.Brand || "").toLowerCase().includes("topps")) card.category = "sports";
       } else {

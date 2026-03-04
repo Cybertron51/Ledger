@@ -1,11 +1,11 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ChevronRight, ChevronLeft, Gamepad2, TrendingUp, Search, UserCircle2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
-import { apiPatch } from "@/lib/api";
+import { api, apiPatch } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
 export default function OnboardingPage() {
@@ -33,6 +33,46 @@ export default function OnboardingPage() {
     // UI State
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Username availability
+    const [usernameStatus, setUsernameStatus] = useState<"idle" | "checking" | "available" | "taken">("idle");
+    const usernameCheckTimer = useRef<NodeJS.Timeout | null>(null);
+
+    // Debounced username availability check
+    useEffect(() => {
+        // Clear any previous timer
+        if (usernameCheckTimer.current) {
+            clearTimeout(usernameCheckTimer.current);
+        }
+
+        const trimmed = username.trim();
+        if (trimmed.length < 2) {
+            setUsernameStatus("idle");
+            return;
+        }
+
+        setUsernameStatus("checking");
+
+        usernameCheckTimer.current = setTimeout(async () => {
+            try {
+                const res = await api(`/api/user/check-username?username=${encodeURIComponent(trimmed)}`);
+                if (!res.ok) {
+                    setUsernameStatus("idle");
+                    return;
+                }
+                const data = await res.json();
+                setUsernameStatus(data.available ? "available" : "taken");
+            } catch {
+                setUsernameStatus("idle");
+            }
+        }, 400);
+
+        return () => {
+            if (usernameCheckTimer.current) {
+                clearTimeout(usernameCheckTimer.current);
+            }
+        };
+    }, [username]);
 
     const { refreshProfile } = useAuth();
 
@@ -95,8 +135,10 @@ export default function OnboardingPage() {
         } catch (err: unknown) {
             console.error(err);
             const msg = err instanceof Error ? err.message : "";
-            if (msg.includes("23505") || msg.includes("already taken")) {
+            if (msg.includes("23505") || msg.includes("already taken") || msg.includes("409")) {
+                setUsernameStatus("taken");
                 setError("That username is already taken. Please choose another.");
+                setStep(1);
             } else {
                 setError("Failed to save profile. Please try again.");
             }
@@ -106,9 +148,23 @@ export default function OnboardingPage() {
     };
 
     const nextStep = () => {
-        if (step === 1 && !username.trim()) {
-            setError("Please enter a username.");
-            return;
+        if (step === 1) {
+            if (!username.trim()) {
+                setError("Please enter a username.");
+                return;
+            }
+            if (username.trim().length < 2) {
+                setError("Username must be at least 2 characters.");
+                return;
+            }
+            if (usernameStatus === "taken") {
+                setError("That username is already taken. Please choose another.");
+                return;
+            }
+            if (usernameStatus === "checking") {
+                setError("Checking username availability...");
+                return;
+            }
         }
         if (step === 2 && favoriteTcgs.length === 0) {
             setError("Please select at least one TCG.");
@@ -163,13 +219,45 @@ export default function OnboardingPage() {
                                     <input
                                         type="text"
                                         value={username}
-                                        onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                                        onChange={(e) => {
+                                            setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''));
+                                            setError(null);
+                                        }}
                                         placeholder="username"
-                                        className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-4 pl-12 pr-4 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all font-mono"
+                                        className={`w-full bg-zinc-900 border rounded-xl py-4 pl-12 pr-12 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 transition-all font-mono ${usernameStatus === "taken"
+                                                ? "border-red-500/60 focus:ring-red-500"
+                                                : usernameStatus === "available"
+                                                    ? "border-green-500/60 focus:ring-green-500"
+                                                    : "border-zinc-800 focus:ring-blue-500"
+                                            }`}
                                         maxLength={20}
                                     />
+                                    {/* Availability indicator */}
+                                    {username.trim().length >= 2 && (
+                                        <div className="absolute inset-y-0 right-0 pr-4 flex items-center">
+                                            {usernameStatus === "checking" && (
+                                                <div className="h-4 w-4 border-2 border-zinc-500 border-t-transparent rounded-full animate-spin" />
+                                            )}
+                                            {usernameStatus === "available" && (
+                                                <svg className="h-5 w-5 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            )}
+                                            {usernameStatus === "taken" && (
+                                                <svg className="h-5 w-5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                                                </svg>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
-                                {error && <p className="text-red-400 text-sm">{error}</p>}
+                                {usernameStatus === "taken" && (
+                                    <p className="text-red-400 text-sm">That username is already taken. Please choose another.</p>
+                                )}
+                                {usernameStatus === "available" && (
+                                    <p className="text-green-400 text-sm">Username is available!</p>
+                                )}
+                                {error && usernameStatus !== "taken" && <p className="text-red-400 text-sm">{error}</p>}
                                 <p className="text-zinc-500 text-sm">Use letters, numbers, and underscores only.</p>
                             </div>
 

@@ -45,7 +45,7 @@ export function mapDBCardToAssetData(c: DBCard): AssetData {
     category: c.category as "pokemon" | "sports",
     hasLiquidity: false, // Will be populated by the frontend
     population: c.population,
-    imageUrl: c.image_url || undefined,
+    imageUrl: c.image_url_hi || c.image_url || undefined,
   };
 }
 

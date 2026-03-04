@@ -455,6 +455,25 @@ function HoldingRow({
       className="flex w-full items-center gap-3 border-b px-5 py-4 text-left transition-colors hover:bg-[#0f0f0f]"
       style={{ borderColor: colors.borderSubtle }}
     >
+      {/* Card thumbnail */}
+      <div
+        className="shrink-0 overflow-hidden rounded-[6px]"
+        style={{
+          width: 40, height: 56,
+          background: colors.surfaceOverlay,
+          border: `1px solid ${colors.borderSubtle}`,
+        }}
+      >
+        <img
+          src={asset.imageUrl || `/cards/${asset.symbol}.svg`}
+          alt={holding.name}
+          className="h-full w-full"
+          style={{ objectFit: 'cover', imageRendering: 'auto' }}
+          onError={(e) => {
+            e.currentTarget.style.display = 'none';
+          }}
+        />
+      </div>
       {/* Left: name + grade + gain */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
@@ -531,6 +550,25 @@ function MarketRow({
       className="flex w-full items-center gap-3 border-b px-5 py-[14px] text-left transition-colors hover:bg-[#0f0f0f]"
       style={{ borderColor: colors.borderSubtle }}
     >
+      {/* Card thumbnail */}
+      <div
+        className="shrink-0 overflow-hidden rounded-[6px]"
+        style={{
+          width: 40, height: 56,
+          background: colors.surfaceOverlay,
+          border: `1px solid ${colors.borderSubtle}`,
+        }}
+      >
+        <img
+          src={asset.imageUrl || `/cards/${asset.symbol}.svg`}
+          alt={asset.name}
+          className="h-full w-full"
+          style={{ objectFit: 'cover', imageRendering: 'auto' }}
+          onError={(e) => {
+            e.currentTarget.style.display = 'none';
+          }}
+        />
+      </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className="truncate text-[14px] font-semibold" style={{ color: colors.textPrimary }}>

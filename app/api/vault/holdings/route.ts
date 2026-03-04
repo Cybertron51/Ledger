@@ -94,6 +94,7 @@ export async function POST(req: NextRequest) {
                         year: cardMeta.year || null,
                         psa_grade: Math.min(Math.max(cardMeta.grade || 9, 8), 10),
                         image_url: imageUrl || null,
+                        image_url_hi: rawImageUrl || imageUrl || null,
                         card_number: cardMeta.cardNumber || null,
                     })
                     .select("id")

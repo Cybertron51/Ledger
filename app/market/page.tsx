@@ -462,17 +462,17 @@ function MarketPageContent() {
             <div className="flex flex-col items-center justify-center rounded-[10px] gap-4" style={{ minHeight: 300 }}>
               {(() => {
                 const h = holdings?.find(h => h.symbol === selected.symbol);
-                const officialImage = h?.imageUrl || selected.imageUrl || `/cards/${selected.symbol}.svg`;
-                const images = h?.rawImageUrl ? [officialImage, h.rawImageUrl] : [officialImage];
+                const hiResImage = selected.imageUrl || h?.imageUrl || `/cards/${selected.symbol}.svg`;
+                const psaThumbnail = h?.imageUrl && selected.imageUrl && h.imageUrl !== selected.imageUrl ? h.imageUrl : null;
+                const rawScan = h?.rawImageUrl || null;
+                // Build image list: hi-res first, then optional extras
+                const images = [hiResImage, ...(psaThumbnail ? [psaThumbnail] : []), ...(rawScan ? [rawScan] : [])].filter((v, i, a) => a.indexOf(v) === i);
 
                 return (
                   <div className="flex flex-col items-center gap-3">
                     <div
                       onClick={() => {
                         if (images.length > 1) {
-                          // Local cycle using a data attribute or inline state hack is tricky,
-                          // let's just cycle based on a global variable for this simple demo, 
-                          // or better yet we added `activeImageIndex` to MarketPage state!
                           setActiveMarketImageIndex((prev) => (prev + 1) % images.length);
                         }
                       }}
@@ -480,13 +480,15 @@ function MarketPageContent() {
                       style={{
                         width: 220, height: 310, borderRadius: 12,
                         border: `1px solid ${colors.borderSubtle}`,
+                        background: colors.surfaceOverlay,
                         cursor: images.length > 1 ? "pointer" : "default",
                       }}
                     >
                       <img
                         src={images[activeMarketImageIndex] || images[0]}
                         alt={selected.name}
-                        className="object-cover w-full h-full"
+                        className="w-full h-full"
+                        style={{ objectFit: 'contain', imageRendering: 'auto' }}
                         onError={(e) => {
                           e.currentTarget.src = "https://via.placeholder.com/220x310/1B1B1B/333333?text=Card+Image";
                         }}

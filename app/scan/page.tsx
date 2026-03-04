@@ -132,6 +132,7 @@ export default function ScanPage() {
   // Batch state
   const [scans, setScans] = useState<ScanItem[]>([]);
   const [activeScanIndex, setActiveScanIndex] = useState<number>(0);
+  const [estimatedValues, setEstimatedValues] = useState<Record<string, number>>({});
 
   // UI state
   const [globalError, setGlobalError] = useState<string | null>(null);
@@ -368,7 +369,7 @@ export default function ScanPage() {
         grade: Math.round(result.estimatedGrade ?? 9),
         set: result.set ?? "Unknown Set",
         year: result.year ?? new Date().getFullYear(),
-        acquisitionPrice: 0,
+        acquisitionPrice: estimatedValues[item.id] ?? 0,
         status: "pending_authentication", // Initial state for escrow flow
         dateDeposited: new Date().toISOString().split("T")[0],
         certNumber: result.certNumber ?? "Pending grading",
@@ -496,6 +497,8 @@ export default function ScanPage() {
             scans={scans}
             onAddToVault={addToVault}
             onScanAgain={reset}
+            estimatedValues={estimatedValues}
+            onSetEstimatedValue={(id, val) => setEstimatedValues(prev => ({ ...prev, [id]: val }))}
           />
         )}
 
@@ -931,12 +934,16 @@ interface ResultStageProps {
   scans: ScanItem[];
   onAddToVault: () => void;
   onScanAgain: () => void;
+  estimatedValues: Record<string, number>;
+  onSetEstimatedValue: (id: string, value: number) => void;
 }
 
 function ResultStage({
   scans,
   onAddToVault,
   onScanAgain,
+  estimatedValues,
+  onSetEstimatedValue,
 }: ResultStageProps) {
   const successes = scans.filter((s) => s.status === "success" && s.result);
   const errors = scans.filter((s) => s.status === "error");
@@ -1016,6 +1023,36 @@ function ResultStage({
                   {result.certNumber && (
                     <div style={{ fontSize: 12, color: colors.textMuted, fontFamily: "monospace", letterSpacing: "0.5px" }}>
                       CERT #{result.certNumber}
+                    </div>
+                  )}
+
+                  {isValid && (
+                    <div style={{ marginTop: 8 }}>
+                      <label style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", color: colors.textMuted, marginBottom: 4, display: "block" }}>
+                        Estimated Value
+                      </label>
+                      <div style={{ display: "flex", alignItems: "center", background: colors.background, borderRadius: 8, border: `1px solid ${colors.border}`, overflow: "hidden" }}>
+                        <span style={{ padding: "8px 0 8px 10px", fontSize: 14, fontWeight: 600, color: colors.textMuted }}>$</span>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          placeholder="0.00"
+                          value={estimatedValues[item.id] || ""}
+                          onChange={(e) => onSetEstimatedValue(item.id, parseFloat(e.target.value) || 0)}
+                          style={{
+                            flex: 1,
+                            padding: "8px 10px 8px 4px",
+                            fontSize: 14,
+                            fontWeight: 600,
+                            color: colors.textPrimary,
+                            background: "transparent",
+                            border: "none",
+                            outline: "none",
+                            fontFamily: "inherit",
+                          }}
+                        />
+                      </div>
                     </div>
                   )}
 
@@ -1160,7 +1197,7 @@ function ConfirmedStage({
             letterSpacing: "-0.02em",
           }}
         >
-          {totalCount} {totalCount === 1 ? "Card" : "Cards"} Registered
+          {totalCount} {totalCount === 1 ? "Card" : "Cards"} Added to Portfolio
         </h2>
         <p
           style={{
@@ -1170,21 +1207,11 @@ function ConfirmedStage({
             lineHeight: 1.5,
           }}
         >
-          They have been registered as{" "}
-          <span
-            style={{
-              color: "#F5C842",
-              fontWeight: 600,
-              background: "rgba(245,200,66,0.12)",
-              padding: "1px 6px",
-              borderRadius: 4,
-            }}
-          >
-            in_transit
-          </span>
+          {totalCount === 1 ? "Your card has" : "Your cards have"} been successfully added to your portfolio.
         </p>
-        <p style={{ fontSize: 13, color: colors.textMuted, marginTop: 8 }}>
-          Ship your cards within 14 days to complete registration
+        <p style={{ fontSize: 13, color: colors.textMuted, marginTop: 8, lineHeight: 1.5 }}>
+          When you&apos;re ready, you can ship {totalCount === 1 ? "it" : "them"} to the vault from your{" "}
+          <span style={{ color: colors.green, fontWeight: 600 }}>Portfolio</span> page.
         </p>
       </div>
 
@@ -1199,7 +1226,7 @@ function ConfirmedStage({
         }}
       >
         <p style={{ fontSize: 13, color: colors.green, margin: 0, lineHeight: 1.5 }}>
-          Once received, our team will verify condition and update your vault status.
+          Once shipped and received, our team will verify condition and update your vault status.
         </p>
       </div>
 

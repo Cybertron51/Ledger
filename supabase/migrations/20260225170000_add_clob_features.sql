@@ -28,7 +28,7 @@ BEGIN
     NEW.id,
     NEW.email,
     NEW.raw_user_meta_data->>'name',
-    25000.00,
+    0.00,
     0.00
   );
   RETURN NEW;

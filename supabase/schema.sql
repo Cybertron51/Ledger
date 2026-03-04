@@ -141,7 +141,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   username       TEXT        UNIQUE,
   favorite_tcgs  TEXT[]      DEFAULT '{}',
   primary_goal   TEXT,
-  cash_balance   DECIMAL(14,2) NOT NULL DEFAULT 25000.00 CHECK (cash_balance >= 0),
+  cash_balance   DECIMAL(14,2) NOT NULL DEFAULT 0.00 CHECK (cash_balance >= 0),
   locked_balance DECIMAL(14,2) NOT NULL DEFAULT 0.00 CHECK (locked_balance >= 0),
   stripe_account_id TEXT,
   onboarding_complete BOOLEAN DEFAULT FALSE,
@@ -171,7 +171,7 @@ BEGIN
     NEW.id,
     NEW.email,
     NEW.raw_user_meta_data->>'name',
-    25000.00,
+    0.00,
     0.00
   );
   RETURN NEW;
