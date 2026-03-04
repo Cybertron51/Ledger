@@ -80,7 +80,8 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
     }
 
     fetchHoldings();
-  }, [isAuthenticated, user]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, user?.id]);
 
   const addHolding = useCallback((holding: VaultHolding) => {
     setHoldings((prev) => {

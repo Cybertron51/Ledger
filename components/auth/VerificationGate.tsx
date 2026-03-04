@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ShieldCheck, ArrowRight, RefreshCw, AlertCircle } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { apiPost } from "@/lib/api";
 import { colors } from "@/lib/theme";
 
 interface VerificationGateProps {
@@ -34,8 +35,7 @@ export function VerificationGate({ children }: VerificationGateProps) {
         setIsSyncing(true);
         setSyncMessage(null);
         try {
-            const res = await fetch("/api/connect/sync", { method: "POST" });
-            const data = await res.json();
+            const data = await apiPost<{ onboardingComplete?: boolean, message?: string }>("/api/connect/sync", {});
 
             if (data.onboardingComplete) {
                 // Success! The parent layout will re-render because we called refreshProfile

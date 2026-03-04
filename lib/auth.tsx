@@ -7,7 +7,7 @@
  * Includes a manual refresh function to sync data after Stripe operations.
  */
 
-import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef, useMemo } from "react";
 import { supabase } from "@/lib/supabase";
 
 // ─────────────────────────────────────────────────────────
@@ -53,6 +53,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<any>(null);
+  const profileLoadedRef = useRef(false);
 
   const fetchProfile = useCallback(async (userId: string, email: string, accessToken: string) => {
     try {
@@ -91,20 +92,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (!supabase) return;
+    profileLoadedRef.current = false;
 
     // Check active session
     supabase.auth.getSession().then(({ data: { session: initSession } }) => {
       setSession(initSession);
-      if (initSession?.user) {
+      if (initSession?.user && !profileLoadedRef.current) {
+        profileLoadedRef.current = true;
         fetchProfile(initSession.user.id, initSession.user.email!, initSession.access_token);
       }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, newSession) => {
+      // Only update session state — don't re-fetch profile on every event
       setSession(newSession);
-      if (event === "SIGNED_IN" && newSession?.user) {
+      if (event === "SIGNED_IN" && newSession?.user && !profileLoadedRef.current) {
+        profileLoadedRef.current = true;
         fetchProfile(newSession.user.id, newSession.user.email!, newSession.access_token);
       } else if (event === "SIGNED_OUT") {
+        profileLoadedRef.current = false;
         setUser(null);
       }
     });
@@ -135,15 +141,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const refreshProfile = useCallback(async () => {
-    if (session?.user && session?.access_token) {
-      await fetchProfile(session.user.id, session.user.email!, session.access_token);
+    if (!supabase) return;
+    // Always get a fresh session to avoid stale/expired tokens
+    const { data: { session: freshSession } } = await supabase.auth.getSession();
+    if (freshSession?.user) {
+      setSession(freshSession);
+      await fetchProfile(freshSession.user.id, freshSession.user.email!, freshSession.access_token);
     }
-  }, [session, fetchProfile]);
+  }, [fetchProfile]);
+
+  // Memoize context value to prevent unnecessary consumer re-renders
+  const value = useMemo<AuthContextValue>(() => ({
+    user, session, isAuthenticated: !!user, signIn, signOut, updateBalance, refreshProfile
+  }), [user, session, signIn, signOut, updateBalance, refreshProfile]);
 
   return (
-    <AuthContext.Provider
-      value={{ user, session, isAuthenticated: !!user, signIn, signOut, updateBalance, refreshProfile }}
-    >
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

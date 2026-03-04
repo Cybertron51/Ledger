@@ -16,6 +16,7 @@ import { CheckCircle, AlertCircle, Loader2, ArrowLeft } from "lucide-react";
 import { colors, layout } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/lib/auth";
+import { supabase } from "@/lib/supabase";
 import { VerificationGate } from "@/components/auth/VerificationGate";
 
 // ─────────────────────────────────────────────────────────
@@ -40,7 +41,7 @@ export default function DepositPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { user, refreshProfile, session } = useAuth();
+  const { user, refreshProfile } = useAuth();
 
   // Detect success from URL params
   useEffect(() => {
@@ -55,21 +56,29 @@ export default function DepositPage() {
 
       // Fallback Sync: If webhook fails due to tunnel issues, sync directly
       const sessionId = localStorage.getItem("last_deposit_session");
-      if (sessionId) {
-        fetch("/api/deposit/sync", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${session?.access_token}`
-          },
-          body: JSON.stringify({ sessionId })
-        })
-          .then(res => res.json())
-          .then(data => {
-            if (data.synced) refreshProfile();
-            localStorage.removeItem("last_deposit_session");
+      if (sessionId && supabase) {
+        // Get a fresh access token (session from context may be stale after Stripe redirect)
+        supabase.auth.getSession().then(({ data: { session: freshSession } }) => {
+          if (!freshSession?.access_token) {
+            console.error("[deposit] No session available for fallback sync");
+            refreshProfile();
+            return;
+          }
+          fetch("/api/deposit/sync", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${freshSession.access_token}`
+            },
+            body: JSON.stringify({ sessionId })
           })
-          .catch(console.error);
+            .then(res => res.json())
+            .then(data => {
+              if (data.synced) refreshProfile();
+              localStorage.removeItem("last_deposit_session");
+            })
+            .catch(console.error);
+        });
       } else {
         refreshProfile();
       }
