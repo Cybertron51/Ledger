@@ -120,9 +120,14 @@ export default function LandingPage() {
                     </button>
                 </div>
 
-                <p style={{ position: "absolute", bottom: 28, fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.2)" }}>
-                    PSA-Graded &nbsp;·&nbsp; Verified &nbsp;·&nbsp; Secure
-                </p>
+                <div style={{ position: "absolute", bottom: 28, display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+                    <p style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: "rgba(255,255,255,0.2)", margin: 0 }}>
+                        PSA-Graded &nbsp;·&nbsp; Verified &nbsp;·&nbsp; Secure
+                    </p>
+                    <a href="/privacy" style={{ fontSize: 10, fontWeight: 600, color: "rgba(255,255,255,0.25)", textDecoration: "none", letterSpacing: "0.06em" }}>
+                        Privacy Policy
+                    </a>
+                </div>
             </div>
 
             {showSignIn && <SignInModal onClose={() => setShowSignIn(false)} />}
