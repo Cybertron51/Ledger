@@ -46,7 +46,7 @@ export async function PATCH(req: NextRequest) {
 export async function GET(req: NextRequest) {
     const auth = await verifyAuth(req);
     if (!auth) return unauthorized();
-    if (auth.email !== "demo@tash.com") {
+    if (auth.email !== "derekyp9@gmail.com") {
         return NextResponse.json({ error: "Forbidden: Admin only" }, { status: 403 });
     }
     if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
