@@ -33,6 +33,8 @@ export default function OnboardingPage() {
     // UI State
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [hasAutofilled, setHasAutofilled] = useState(false);
+    const [hasAutoSkipped, setHasAutoSkipped] = useState(false);
 
     // Username availability
     const [usernameStatus, setUsernameStatus] = useState<"idle" | "checking" | "available" | "taken">("idle");
@@ -106,6 +108,37 @@ export default function OnboardingPage() {
             return () => clearTimeout(timer);
         }
     }, [session, router]);
+
+    // Autofill username for Google users
+    useEffect(() => {
+        if (!session?.user || hasAutofilled || user?.username || username) return;
+
+        const isGoogle = session.user.app_metadata?.provider === "google";
+        const meta = session.user.user_metadata;
+
+        if (isGoogle || meta?.full_name || meta?.name) {
+            const rawName = meta?.full_name || meta?.name || session.user.email?.split("@")[0] || "";
+            if (rawName) {
+                const suggested = rawName.toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 20);
+                if (suggested.length >= 2) {
+                    setUsername(suggested);
+                    setHasAutofilled(true);
+                }
+            }
+        }
+    }, [session, user, hasAutofilled, username]);
+
+    // Auto-skip step 1 if username is available and it was an autofill
+    useEffect(() => {
+        if (step === 1 && usernameStatus === "available" && hasAutofilled && !hasAutoSkipped && !isSubmitting) {
+            setHasAutoSkipped(true);
+            // Small delay to let the user see the "available" state briefly
+            const timer = setTimeout(() => {
+                nextStep();
+            }, 800);
+            return () => clearTimeout(timer);
+        }
+    }, [step, usernameStatus, hasAutofilled, hasAutoSkipped, isSubmitting]);
 
     const toggleTcg = (tcg: string) => {
         setFavoriteTcgs(prev =>
@@ -225,10 +258,10 @@ export default function OnboardingPage() {
                                         }}
                                         placeholder="username"
                                         className={`w-full bg-zinc-900 border rounded-xl py-4 pl-12 pr-12 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 transition-all font-mono ${usernameStatus === "taken"
-                                                ? "border-red-500/60 focus:ring-red-500"
-                                                : usernameStatus === "available"
-                                                    ? "border-green-500/60 focus:ring-green-500"
-                                                    : "border-zinc-800 focus:ring-blue-500"
+                                            ? "border-red-500/60 focus:ring-red-500"
+                                            : usernameStatus === "available"
+                                                ? "border-green-500/60 focus:ring-green-500"
+                                                : "border-zinc-800 focus:ring-blue-500"
                                             }`}
                                         maxLength={20}
                                     />

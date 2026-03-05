@@ -4,28 +4,78 @@ import { supabaseAdmin as supabase } from "./supabase-admin";
  * Fetches the primary (front) image for a PSA certification number
  * from the PSA Public API.
  */
-export async function fetchPSAImage(certNumber: string): Promise<string | null> {
-    const token = process.env.PSA_API_TOKEN;
-    if (!token) {
-        console.warn("PSA_API_TOKEN is not set, skipping PSA image fetch.");
+/**
+ * Collects available PSA API tokens from environment variables.
+ */
+function getPSATokens(): string[] {
+    const tokens = [
+        process.env.PSA_API_TOKEN,
+        process.env.PSA_API_TOKEN1,
+        process.env.PSA_API_TOKEN2,
+        process.env.PSA_API_TOKEN3
+    ].filter((t): t is string => !!t);
+    return tokens;
+}
+
+/**
+ * Generic fetcher that waterfalls through available PSA tokens.
+ */
+async function fetchWithWaterfall(url: string): Promise<Response | null> {
+    const tokens = getPSATokens();
+    if (tokens.length === 0) {
+        console.warn("[PSA Waterfall] No PSA API tokens configured.");
         return null;
     }
 
+    for (let i = 0; i < tokens.length; i++) {
+        const token = tokens[i];
+        const tokenName = i === 0 ? "PSA_API_TOKEN" : `PSA_API_TOKEN${i}`;
+
+        try {
+            console.log(`[PSA Waterfall] Trying ${tokenName} for: ${url}`);
+            const res = await fetch(url, {
+                headers: {
+                    Authorization: `Bearer ${token}`
+                }
+            });
+
+            console.log(`[PSA Waterfall] ${tokenName} response: ${res.status} ${res.statusText}`);
+
+            // If 2xx, return the response
+            if (res.ok) {
+                return res;
+            }
+
+            // If 404, the resource doesn't exist, no point in trying other tokens
+            if (res.status === 404) {
+                return res;
+            }
+
+            // If we're here, it's likely a rate limit (429) or other error (5xx, 401, 403)
+            // Continue to the next token in the waterfall
+            console.warn(`[PSA Waterfall] ${tokenName} failed with status ${res.status}. Moving to next token...`);
+        } catch (error) {
+            console.error(`[PSA Waterfall] ${tokenName} exception:`, error);
+        }
+    }
+
+    console.error("[PSA Waterfall] All tokens exhausted or failed.");
+    return null;
+}
+
+/**
+ * Fetches the primary (front) image for a PSA certification number
+ * from the PSA Public API.
+ */
+export async function fetchPSAImage(certNumber: string): Promise<string | null> {
     try {
         const url = `https://api.psacard.com/publicapi/cert/GetImagesByCertNumber/${certNumber}`;
-        console.log(`[PSA Images] GET ${url}`);
-        const res = await fetch(url, {
-            headers: {
-                Authorization: `Bearer ${token}`
+        const res = await fetchWithWaterfall(url);
+
+        if (!res || !res.ok) {
+            if (res?.status !== 404) {
+                console.error(`[PSA Images] Failed to fetch images for ${certNumber}`);
             }
-        });
-
-        console.log(`[PSA Images] Response status: ${res.status} ${res.statusText}`);
-
-        if (!res.ok) {
-            const errorBody = await res.text().catch(() => "<unable to read body>");
-            console.error(`[PSA Images] Error response body: ${errorBody}`);
-            if (res.status === 404) return null;
             return null;
         }
 
@@ -52,26 +102,11 @@ export async function fetchPSAImage(certNumber: string): Promise<string | null> 
  * from the PSA Public API.
  */
 export async function fetchPSAMetadata(certNumber: string): Promise<any | null> {
-    const token = process.env.PSA_API_TOKEN;
-    if (!token) {
-        console.warn("[PSA Metadata] PSA_API_TOKEN is not set, skipping.");
-        return null;
-    }
-
     try {
         const url = `https://api.psacard.com/publicapi/cert/GetByCertNumber/${certNumber}`;
-        console.log(`[PSA Metadata] GET ${url}`);
-        const res = await fetch(url, {
-            headers: {
-                Authorization: `Bearer ${token}`
-            }
-        });
+        const res = await fetchWithWaterfall(url);
 
-        console.log(`[PSA Metadata] Response status: ${res.status} ${res.statusText}`);
-
-        if (!res.ok) {
-            const errorBody = await res.text().catch(() => "<unable to read body>");
-            console.error(`[PSA Metadata] Error response body: ${errorBody}`);
+        if (!res || !res.ok) {
             return null;
         }
 
