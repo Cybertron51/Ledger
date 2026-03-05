@@ -60,29 +60,27 @@ export async function POST(req: NextRequest) {
           const piId = paymentIntent.id;
           const amountInDollars = paymentIntent.amount / 100;
 
-          // IDEMPOTENCY CHECK: Use Payment Intent ID as the unique key
-          const { data: existing } = await supabaseAdmin
+          // ATOMIC IDEMPOTENCY: Insert with ON CONFLICT DO NOTHING.
+          // If the row already exists (duplicate event), the insert is a no-op.
+          const { data: inserted, status } = await supabaseAdmin
             .from("stripe_transactions")
-            .select("id")
-            .eq("id", piId)
-            .single();
+            .upsert(
+              {
+                id: piId,
+                user_id: userId,
+                amount: amountInDollars,
+                type: "deposit"
+              },
+              { onConflict: "id", ignoreDuplicates: true }
+            )
+            .select("id");
 
-          if (existing) {
+          // Only credit balance if we actually inserted a new row
+          if (!inserted || inserted.length === 0) {
             console.log(`[webhook] Transaction ${piId} already processed, skipping.`);
             break;
           }
 
-          // 1. Log the transaction (idempotency marker)
-          await supabaseAdmin
-            .from("stripe_transactions")
-            .insert({
-              id: piId,
-              user_id: userId,
-              amount: amountInDollars,
-              type: "deposit"
-            });
-
-          // 2. Credit the balance
           await updateBalance(userId, amountInDollars);
           console.log(`[webhook] Deposit credited (PI): ${amountInDollars} to user ${userId}`);
         }
@@ -99,29 +97,27 @@ export async function POST(req: NextRequest) {
             : session.payment_intent.id;
           const amountInDollars = (session.amount_total || 0) / 100;
 
-          // IDEMPOTENCY CHECK: Same Payment Intent ID as above
-          const { data: existing } = await supabaseAdmin
+          // ATOMIC IDEMPOTENCY: Insert with ON CONFLICT DO NOTHING.
+          const { data: inserted } = await supabaseAdmin
             .from("stripe_transactions")
-            .select("id")
-            .eq("id", piId)
-            .single();
+            .upsert(
+              {
+                id: piId,
+                user_id: userId,
+                amount: amountInDollars,
+                type: "deposit"
+              },
+              { onConflict: "id", ignoreDuplicates: true }
+            )
+            .select("id");
 
-          if (existing) {
+          if (!inserted || inserted.length === 0) {
             console.log(`[webhook] Transaction ${piId} already processed (via checkout), skipping.`);
             break;
           }
 
-          await supabaseAdmin
-            .from("stripe_transactions")
-            .insert({
-              id: piId,
-              user_id: userId,
-              amount: amountInDollars,
-              type: "deposit"
-            });
-
           await updateBalance(userId, amountInDollars);
-          console.log(`[webhook] Deposit credited (Checkout fallback): ${amountInDollars} to user ${userId}`);
+          console.log(`[webhook] Deposit credited (Checkout): ${amountInDollars} to user ${userId}`);
         }
         break;
       }

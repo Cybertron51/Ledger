@@ -38,14 +38,22 @@ export async function POST(req: NextRequest) {
                 return NextResponse.json({ error: "DB not configured" }, { status: 503 });
             }
 
-            // IDEMPOTENCY CHECK: Use Payment Intent ID for consistency with webhook
-            const { data: existing } = await supabaseAdmin
+            // ATOMIC IDEMPOTENCY: Insert with ON CONFLICT DO NOTHING.
+            const amountInDollars = (session.amount_total || 0) / 100;
+            const { data: inserted } = await supabaseAdmin
                 .from("stripe_transactions")
-                .select("id")
-                .eq("id", piId)
-                .single();
+                .upsert(
+                    {
+                        id: piId,
+                        user_id: auth.userId,
+                        amount: amountInDollars,
+                        type: "deposit"
+                    },
+                    { onConflict: "id", ignoreDuplicates: true }
+                )
+                .select("id");
 
-            if (existing) {
+            if (!inserted || inserted.length === 0) {
                 return NextResponse.json({
                     synced: true,
                     paid: true,
@@ -53,19 +61,7 @@ export async function POST(req: NextRequest) {
                 });
             }
 
-            const amountInDollars = (session.amount_total || 0) / 100;
-
-            // 1. Log the transaction (idempotency marker)
-            await supabaseAdmin
-                .from("stripe_transactions")
-                .insert({
-                    id: piId,
-                    user_id: auth.userId,
-                    amount: amountInDollars,
-                    type: "deposit"
-                });
-
-            // 2. Credit the balance
+            // Credit the balance (only if we actually inserted a new row)
             const newBalance = await updateBalance(auth.userId, amountInDollars);
 
             return NextResponse.json({
