@@ -42,9 +42,11 @@ export function TradePanel({ asset, orderBook, onRequestSignIn }: TradePanelProp
   // Reset to form when asset changes
   useEffect(() => {
     setLimitPrice(asset.price);
+    setQuantity(1);
     setStage("form");
     setResult(null);
-  }, [asset.symbol, asset.price]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [asset.symbol]);
 
   const estPrice =
     orderType === "market"
