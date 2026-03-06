@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
     if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
 
     try {
-        const { data, error } = await supabaseAdmin.auth.admin.listUsers();
+        const { data, error } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
         if (error) {
             return NextResponse.json({ error: error.message }, { status: 500 });
         }
