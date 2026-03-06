@@ -71,7 +71,7 @@ export function VerificationGate({ children }: VerificationGateProps) {
 
             <div className="flex flex-col w-full max-w-[320px] gap-3">
                 <Link
-                    href={`/onboarding?step=4${pathname ? `&returnTo=${encodeURIComponent(pathname)}` : ""}`}
+                    href={`/wallet-setup${pathname ? `?returnTo=${encodeURIComponent(pathname)}` : ""}`}
                     className="flex w-full items-center justify-center gap-2 rounded-xl py-4 text-[14px] font-bold transition-all hover:scale-[1.02] active:scale-[0.98]"
                     style={{ background: colors.green, color: colors.textInverse }}
                 >
