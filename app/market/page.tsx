@@ -35,6 +35,7 @@ import { TradePanel } from "@/components/market/TradePanel";
 import { usePortfolio } from "@/lib/portfolio-context";
 import { colors, layout } from "@/lib/theme";
 import { formatCurrency, cn } from "@/lib/utils";
+import { useIsMobile } from "@/lib/hooks/useIsMobile";
 
 type ViewMode = "simple" | "advanced";
 
@@ -86,9 +87,12 @@ function MarketPageContent() {
   const [dashboardTab, setDashboardTab] = useState<"image" | "chart">("image");
   const [activeMarketImageIndex, setActiveMarketImageIndex] = useState(0);
   const { holdings } = usePortfolio();
+  const isMobile = useIsMobile();
+  const [hasMounted, setHasMounted] = useState(false);
 
-  // Persist view preference
+  // Persist view preference and handle hydration
   useEffect(() => {
+    setHasMounted(true);
     const stored = localStorage.getItem("tash-view-mode") as ViewMode | null;
     if (stored === "simple" || stored === "advanced") setViewMode(stored);
   }, []);
@@ -275,8 +279,18 @@ function MarketPageContent() {
 
   const chromeOffset = layout.chromeHeight;
 
+  if (!hasMounted) {
+    return (
+      <div className="flex flex-col items-center justify-center p-8" style={{ minHeight: `calc(100dvh - ${chromeOffset})` }}>
+        <p style={{ color: colors.textMuted, fontSize: 13, fontWeight: 600 }}>
+          Loading market view...
+        </p>
+      </div>
+    );
+  }
+
   // ─────────────────────────────────────────────────────────
-  // Simple view
+  // Simple view / Mobile view
   // ─────────────────────────────────────────────────────────
 
   if (isLoading || assets.length === 0) {
@@ -292,19 +306,21 @@ function MarketPageContent() {
     );
   }
 
-  if (viewMode === "simple") {
+  if (viewMode === "simple" || isMobile) {
     return (
       <div
         className="overflow-y-auto"
         style={{ minHeight: `calc(100dvh - ${chromeOffset})` }}
       >
         {/* Toggle — top-right, same position as in advanced view */}
-        <div
-          className="sticky top-0 z-[10] flex items-center justify-end border-b px-4 py-[9px]"
-          style={{ background: colors.background, borderColor: colors.border }}
-        >
-          <ViewToggle mode={viewMode} onChange={handleViewChange} />
-        </div>
+        {!isMobile && (
+          <div
+            className="sticky top-0 z-[10] flex items-center justify-end border-b px-4 py-[9px]"
+            style={{ background: colors.background, borderColor: colors.border }}
+          >
+            <ViewToggle mode={viewMode} onChange={handleViewChange} />
+          </div>
+        )}
 
         <SimpleView
           assets={visibleAssets}

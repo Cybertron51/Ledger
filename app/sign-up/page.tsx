@@ -12,10 +12,11 @@ export default function SignUpPage() {
     const router = useRouter();
     const { user, isProfileComplete } = useAuth();
     const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
+    const [token, setToken] = useState("");
     const [loading, setLoading] = useState(false);
     const [errorMsg, setErrorMsg] = useState("");
     const [showSignIn, setShowSignIn] = useState(false);
+    const [otpSent, setOtpSent] = useState(false);
 
     // If user is already logged in, redirect them to onboarding
     // (Onboarding will redirect them to portfolio if fully onboarded)
@@ -29,23 +30,44 @@ export default function SignUpPage() {
         }
     }, [user, isProfileComplete, router]);
 
-    const handleSignUp = async (e: React.FormEvent) => {
+    const handleSendOtp = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!supabase) return;
         setLoading(true);
         setErrorMsg("");
 
         try {
-            const { error } = await supabase.auth.signUp({
+            const { error } = await supabase.auth.signInWithOtp({
                 email,
-                password,
-                options: { data: { name: email.split("@")[0] } },
+                options: {
+                    data: { name: email.split("@")[0] },
+                },
             });
             if (error) throw error;
-            router.push("/onboarding");
-            router.refresh();
+            setOtpSent(true);
         } catch (err: any) {
-            setErrorMsg(err.message || "Failed to create account.");
+            setErrorMsg(err.message || "Failed to send code.");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleVerifyOtp = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!supabase) return;
+        setLoading(true);
+        setErrorMsg("");
+
+        try {
+            const { error } = await supabase.auth.verifyOtp({
+                email,
+                token,
+                type: 'email',
+            });
+            if (error) throw error;
+            // The useEffect will handle redirecting when `user` populates
+        } catch (err: any) {
+            setErrorMsg(err.message || "Invalid or expired code.");
         } finally {
             setLoading(false);
         }
@@ -88,51 +110,94 @@ export default function SignUpPage() {
                         The premier portfolio and trading platform for collectors.
                     </p>
 
-                    <form onSubmit={handleSignUp} className="space-y-4">
-                        {errorMsg && (
-                            <div
-                                className="rounded-[8px] p-3 text-[13px] font-medium"
-                                style={{
-                                    background: "rgba(255, 60, 60, 0.1)",
-                                    color: colors.red,
-                                    border: `1px solid rgba(255, 60, 60, 0.2)`,
-                                }}
-                            >
-                                {errorMsg}
-                            </div>
-                        )}
-
-                        <input
-                            type="email"
-                            placeholder="Email address"
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            required
-                            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-4 px-4 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition-all font-mono"
-                        />
-
-                        <input
-                            type="password"
-                            placeholder="Password"
-                            value={password}
-                            onChange={(e) => setPassword(e.target.value)}
-                            required
-                            className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-4 px-4 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition-all font-mono"
-                        />
-
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className="w-full flex items-center justify-center space-x-2 py-4 px-6 rounded-xl font-medium transition-colors disabled:opacity-70"
-                            style={{ background: colors.green, color: colors.textInverse }}
-                        >
-                            {loading ? (
-                                <Loader2 size={20} className="animate-spin" />
-                            ) : (
-                                <span>Sign Up</span>
+                    {!otpSent ? (
+                        <form onSubmit={handleSendOtp} className="space-y-4">
+                            {errorMsg && (
+                                <div
+                                    className="rounded-[8px] p-3 text-[13px] font-medium"
+                                    style={{
+                                        background: "rgba(255, 60, 60, 0.1)",
+                                        color: colors.red,
+                                        border: `1px solid rgba(255, 60, 60, 0.2)`,
+                                    }}
+                                >
+                                    {errorMsg}
+                                </div>
                             )}
-                        </button>
-                    </form>
+
+                            <input
+                                type="email"
+                                placeholder="Email address"
+                                value={email}
+                                onChange={(e) => setEmail(e.target.value)}
+                                required
+                                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-4 px-4 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition-all font-mono"
+                            />
+
+                            <button
+                                type="submit"
+                                disabled={loading}
+                                className="w-full flex items-center justify-center space-x-2 py-4 px-6 rounded-xl font-medium transition-colors disabled:opacity-70"
+                                style={{ background: colors.green, color: colors.textInverse }}
+                            >
+                                {loading ? (
+                                    <Loader2 size={20} className="animate-spin" />
+                                ) : (
+                                    <span>Continue with Email</span>
+                                )}
+                            </button>
+                        </form>
+                    ) : (
+                        <form onSubmit={handleVerifyOtp} className="space-y-4">
+                            {errorMsg && (
+                                <div
+                                    className="rounded-[8px] p-3 text-[13px] font-medium"
+                                    style={{
+                                        background: "rgba(255, 60, 60, 0.1)",
+                                        color: colors.red,
+                                        border: `1px solid rgba(255, 60, 60, 0.2)`,
+                                    }}
+                                >
+                                    {errorMsg}
+                                </div>
+                            )}
+
+                            <div className="text-sm text-zinc-400 mb-2">
+                                We sent a 6-digit code to <strong>{email}</strong>.
+                            </div>
+
+                            <input
+                                type="text"
+                                placeholder="000000"
+                                value={token}
+                                onChange={(e) => setToken(e.target.value)}
+                                required
+                                maxLength={6}
+                                className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-4 px-4 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition-all font-mono text-center tracking-widest text-lg"
+                            />
+
+                            <button
+                                type="submit"
+                                disabled={loading || token.length < 6}
+                                className="w-full flex items-center justify-center space-x-2 py-4 px-6 rounded-xl font-medium transition-colors disabled:opacity-70"
+                                style={{ background: colors.green, color: colors.textInverse }}
+                            >
+                                {loading ? (
+                                    <Loader2 size={20} className="animate-spin" />
+                                ) : (
+                                    <span>Verify Code</span>
+                                )}
+                            </button>
+
+                            <button
+                                type="button"
+                                onClick={() => setOtpSent(false)}
+                                className="w-full text-sm text-zinc-500 hover:text-white transition-colors mt-2"
+                            >
+                                Use a different email
+                            </button>
+                        </form>
+                    )}
 
                     <div className="my-6 flex items-center">
                         <div className="flex-1 border-t border-zinc-800"></div>
