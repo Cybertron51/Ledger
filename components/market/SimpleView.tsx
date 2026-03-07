@@ -174,7 +174,7 @@ function TradeModal({
     >
       <div
         className="w-full max-w-sm rounded-t-[24px] p-6 sm:rounded-[20px] overflow-y-auto"
-        style={{ background: colors.surface, border: `1px solid ${colors.border}`, maxHeight: "calc(100dvh - 80px)" }}
+        style={{ background: colors.surface, border: `1px solid ${colors.border}`, maxHeight: "calc(100dvh - 40px)" }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* ── Header ── */}
@@ -404,7 +404,7 @@ function TradeModal({
               </div>
             )}
 
-            <div className="mt-6 w-full pb-6">
+            <div className="mt-6 w-full pb-12">
               <button
                 onClick={handleConfirm}
                 disabled={!canAfford || price <= 0}

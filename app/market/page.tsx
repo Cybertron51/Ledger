@@ -314,7 +314,7 @@ function MarketPageContent() {
     );
   }
 
-  if (viewMode === "simple" || isMobile) {
+  if (viewMode === "simple") {
     return (
       <div
         className="overflow-y-auto"
@@ -473,8 +473,8 @@ function MarketPageContent() {
         {/* ── CENTER: Chart + Stats + Grid ─────────────────── */}
         <main className="flex min-w-0 flex-1 flex-col md:overflow-y-auto" style={{ background: colors.background }}>
           {/* Header Row */}
-          <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b px-4 sm:px-6 py-4"
-            style={{ borderColor: colors.border }}>
+          <div className="sticky top-0 z-[10] flex flex-col sm:flex-row sm:items-start justify-between gap-4 border-b px-4 sm:px-6 py-4"
+            style={{ borderColor: colors.border, background: colors.background }}>
             <div className="flex items-start gap-3">
               {isMobile && (
                 <button
@@ -485,19 +485,26 @@ function MarketPageContent() {
                   <Menu size={18} style={{ color: colors.textPrimary }} />
                 </button>
               )}
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h1 className="text-[18px] sm:text-[20px] font-bold leading-tight tracking-tight break-words" style={{ color: colors.textPrimary }}>
-                    {selected.name}
-                  </h1>
-                  <div
-                    className="rounded-[6px] px-2 py-[3px]"
-                    style={{ background: colors.greenMuted, border: `1px solid ${colors.green}33` }}
-                  >
-                    <span className="text-[10px] whitespace-nowrap font-bold tracking-wide" style={{ color: colors.green }}>
-                      PSA {selected.grade}
-                    </span>
+              <div className="flex-1">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h1 className="text-[18px] sm:text-[20px] font-bold leading-tight tracking-tight break-words" style={{ color: colors.textPrimary }}>
+                      {selected.name}
+                    </h1>
+                    <div
+                      className="rounded-[6px] px-2 py-[3px]"
+                      style={{ background: colors.greenMuted, border: `1px solid ${colors.green}33` }}
+                    >
+                      <span className="text-[10px] whitespace-nowrap font-bold tracking-wide" style={{ color: colors.green }}>
+                        PSA {selected.grade}
+                      </span>
+                    </div>
                   </div>
+                  {isMobile && (
+                    <div className="shrink-0">
+                      <ViewToggle mode={viewMode} onChange={handleViewChange} />
+                    </div>
+                  )}
                 </div>
                 <p className="mt-[3px] text-[11px] uppercase tracking-wider" style={{ color: colors.textMuted }}>
                   {selected.symbol} · {selected.set}
@@ -639,14 +646,13 @@ function MarketPageContent() {
         >
           {/* Toggle row */}
           <div
-            className="flex items-center justify-between md:justify-end border-b px-4 py-[9px]"
-            style={{ background: colors.background, borderColor: colors.border }}
+            className="flex items-center justify-end border-b px-4 py-[9px]"
+            style={{
+              background: colors.background,
+              borderColor: colors.border,
+              display: isMobile ? 'none' : 'flex'
+            }}
           >
-            {isMobile && (
-              <span className="text-[12px] font-bold text-white tracking-wide">
-                Trade Panel
-              </span>
-            )}
             <ViewToggle mode={viewMode} onChange={handleViewChange} />
           </div>
 
