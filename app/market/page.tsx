@@ -362,8 +362,8 @@ function MarketPageContent() {
       {/* ── LEFT: Asset list (Sidebar) ─────────────────────── */}
       <aside
         className={cn(
-          "flex flex-col overflow-y-auto border-r transition-transform duration-300 z-[100]",
-          isMobile ? "fixed inset-y-0 left-0 bottom-0" : "relative",
+          "flex flex-col border-r transition-transform duration-300 z-[100] overflow-hidden",
+          isMobile ? "fixed left-0 bottom-0" : "relative",
           isMobile && !showSidebar ? "-translate-x-full" : "translate-x-0"
         )}
         style={{
@@ -371,15 +371,16 @@ function MarketPageContent() {
           minWidth: 280,
           borderColor: colors.border,
           background: colors.background,
+          top: isMobile ? chromeOffset : 0,
         }}
       >
         <div
-          className="sticky top-0 z-[1] flex items-center justify-between border-b px-4 py-[10px]"
+          className="flex shrink-0 items-center justify-between border-t border-b px-4 py-3"
           style={{ background: colors.background, borderColor: colors.border }}
         >
           <div className="flex items-center gap-[6px]">
-            <Zap size={11} strokeWidth={2.5} style={{ color: colors.green }} />
-            <span className="text-[10px] font-bold uppercase tracking-[0.12em]" style={{ color: colors.green }}>
+            <Zap size={12} strokeWidth={2.5} style={{ color: colors.green }} />
+            <span className="text-[11px] font-bold uppercase tracking-[0.14em]" style={{ color: colors.green }}>
               Live Market
             </span>
           </div>
@@ -392,79 +393,81 @@ function MarketPageContent() {
                 type="checkbox"
                 checked={showNonTradable}
                 onChange={() => setShowNonTradable(!showNonTradable)}
-                className="w-3 h-3 rounded-[3px] border-none bg-[#111111] accent-[#22c55e] cursor-pointer"
+                className="w-3.5 h-3.5 rounded-[4px] border-none bg-[#111111] accent-[#22c55e] cursor-pointer"
                 style={{ border: `1px solid ${colors.borderSubtle}` }}
               />
-              <span className="text-[10px] font-semibold uppercase tracking-wider hidden sm:inline" style={{ color: colors.textMuted }}>
+              <span className="text-[10px] font-bold uppercase tracking-wider hidden sm:inline" style={{ color: colors.textMuted }}>
                 Show all
               </span>
             </label>
             {isMobile && (
               <button onClick={() => setShowSidebar(false)} className="p-1 -mr-2">
-                <X size={16} style={{ color: colors.textMuted }} />
+                <X size={18} style={{ color: colors.textMuted }} />
               </button>
             )}
           </div>
         </div>
 
-        {visibleAssets.map((asset) => {
-          const assetUp = asset.change >= 0;
-          const isSel = asset.symbol === selectedSymbol;
-          const flash = flashMap[asset.symbol];
+        <div className="flex-1 overflow-y-auto">
+          {visibleAssets.map((asset) => {
+            const assetUp = asset.change >= 0;
+            const isSel = asset.symbol === selectedSymbol;
+            const flash = flashMap[asset.symbol];
 
-          return (
-            <button
-              key={asset.symbol}
-              onClick={() => setSelectedSymbol(asset.symbol)}
-              className="w-full border-b text-left transition-colors duration-100 hover:bg-[#0f0f0f]"
-              style={{
-                borderColor: colors.borderSubtle,
-                background: isSel ? colors.surface : "transparent",
-                borderLeft: `2px solid ${isSel ? colors.green : "transparent"}`,
-                paddingLeft: isSel ? 10 : 12,
-                paddingRight: 12,
-                paddingTop: 10,
-                paddingBottom: 10,
-              }}
-            >
-              <div className="flex items-start justify-between gap-1">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[12px] font-semibold leading-snug" style={{ color: colors.textPrimary }}>
-                    {asset.name}
-                  </p>
-                  <div className="mt-[2px] flex items-center gap-[6px]">
-                    <span className="text-[10px] uppercase tracking-wider" style={{ color: colors.textMuted }}>
-                      PSA {asset.grade}
-                    </span>
-                    {!asset.hasLiquidity && (
-                      <span
-                        className="rounded-[4px] px-[4px] py-[1px] text-[8px] font-bold tracking-widest uppercase"
-                        style={{ background: colors.surfaceRaised, color: colors.textMuted }}
-                      >
-                        Not Traded
+            return (
+              <button
+                key={asset.symbol}
+                onClick={() => setSelectedSymbol(asset.symbol)}
+                className="w-full border-b text-left transition-colors duration-100 hover:bg-[#0f0f0f]"
+                style={{
+                  borderColor: colors.borderSubtle,
+                  background: isSel ? colors.surface : "transparent",
+                  borderLeft: `2px solid ${isSel ? colors.green : "transparent"}`,
+                  paddingLeft: isSel ? 10 : 12,
+                  paddingRight: 12,
+                  paddingTop: 10,
+                  paddingBottom: 10,
+                }}
+              >
+                <div className="flex items-start justify-between gap-1">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[12px] font-semibold leading-snug" style={{ color: colors.textPrimary }}>
+                      {asset.name}
+                    </p>
+                    <div className="mt-[2px] flex items-center gap-[6px]">
+                      <span className="text-[10px] uppercase tracking-wider" style={{ color: colors.textMuted }}>
+                        PSA {asset.grade}
                       </span>
-                    )}
+                      {!asset.hasLiquidity && (
+                        <span
+                          className="rounded-[4px] px-[4px] py-[1px] text-[8px] font-bold tracking-widest uppercase"
+                          style={{ background: colors.surfaceRaised, color: colors.textMuted }}
+                        >
+                          Not Traded
+                        </span>
+                      )}
+                    </div>
                   </div>
+                  <SparklineChart data={sparklines[asset.symbol] ?? []} isUp={assetUp} width={56} height={26} />
                 </div>
-                <SparklineChart data={sparklines[asset.symbol] ?? []} isUp={assetUp} width={56} height={26} />
-              </div>
-              <div className="mt-[6px] flex items-center justify-between">
-                <span
-                  className="tabular-nums text-[13px] font-bold"
-                  style={{
-                    color: flash ? (flash === "up" ? colors.green : colors.red) : colors.textPrimary,
-                    transition: "color 0.35s ease",
-                  }}
-                >
-                  {formatCurrency(asset.price)}
-                </span>
-                <span className="tabular-nums text-[11px] font-semibold" style={{ color: assetUp ? colors.green : colors.red }}>
-                  {assetUp ? "+" : ""}{asset.changePct.toFixed(2)}%
-                </span>
-              </div>
-            </button>
-          );
-        })}
+                <div className="mt-[6px] flex items-center justify-between">
+                  <span
+                    className="tabular-nums text-[13px] font-bold"
+                    style={{
+                      color: flash ? (flash === "up" ? colors.green : colors.red) : colors.textPrimary,
+                      transition: "color 0.35s ease",
+                    }}
+                  >
+                    {formatCurrency(asset.price)}
+                  </span>
+                  <span className="tabular-nums text-[11px] font-semibold" style={{ color: assetUp ? colors.green : colors.red }}>
+                    {assetUp ? "+" : ""}{asset.changePct.toFixed(2)}%
+                  </span>
+                </div>
+              </button>
+            );
+          })}
+        </div>
       </aside>
 
       {/* ── CENTER & RIGHT WRAPPER (Mobile scrollable, Desktop flex) ── */}

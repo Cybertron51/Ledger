@@ -81,7 +81,7 @@ export default function WalletSetupPage() {
                     <div>
                         <h1 className="text-3xl font-bold mb-4">Connect your Wallet</h1>
                         <p className="text-zinc-400 text-lg leading-relaxed">
-                            To buy, sell, and withdraw funds on Tash, you need to connect your financial account via Stripe.
+                            To buy, sell, and withdraw funds on tash., you need to connect your financial account via Stripe.
                             This ensures secure, instant settlements.
                         </p>
                     </div>
@@ -141,7 +141,7 @@ export default function WalletSetupPage() {
                 <div className="relative z-10 w-72 h-96 rounded-2xl border border-white/10 bg-gradient-to-br from-white/5 to-white/0 backdrop-blur-sm shadow-2xl overflow-hidden flex items-center justify-center group">
                     <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/5 to-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-700" />
                     <div className="w-24 h-24 rounded-full border border-white/20 flex items-center justify-center">
-                        <span className="text-white/40 font-mono text-xs tracking-widest">TASH</span>
+                        <span className="text-white/40 font-mono text-xs tracking-widest">tash.</span>
                     </div>
                 </div>
             </div>

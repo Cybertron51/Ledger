@@ -202,7 +202,7 @@ export function Navigation() {
         }}
       >
         {/* ── Wordmark ─────────────────────────────── */}
-        <Link href="/market" className="flex items-center gap-2 no-underline" aria-label="tash home">
+        <Link href="/market" className="flex items-center gap-2 no-underline" aria-label="tash. home">
           <div
             className="flex items-center justify-center rounded-[8px]"
             style={{ width: 28, height: 28, backgroundColor: colors.green }}
@@ -215,7 +215,7 @@ export function Navigation() {
             className="text-[18px] font-bold tracking-tight"
             style={{ color: colors.textPrimary, letterSpacing: "-0.03em" }}
           >
-            tash
+            tash.
           </span>
         </Link>
 

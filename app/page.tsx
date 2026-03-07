@@ -95,7 +95,7 @@ export default function LandingPage() {
                 </p>
 
                 <h1 style={{ fontSize: "clamp(88px, 18vw, 172px)", fontWeight: 900, color: "#fff", letterSpacing: "-0.05em", margin: "0 0 20px", lineHeight: 0.88 }}>
-                    tash
+                    tash.
                 </h1>
 
                 <p style={{ fontSize: "clamp(17px, 2.4vw, 22px)", color: "rgba(255,255,255,0.8)", fontWeight: 500, margin: "0 0 10px", maxWidth: 500, lineHeight: 1.35 }}>

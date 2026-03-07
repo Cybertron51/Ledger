@@ -92,7 +92,7 @@ export default function SignUpPage() {
             <div className="flex-1 flex flex-col justify-center px-8 sm:px-16 lg:px-24 xl:px-32 relative z-10 w-full max-w-2xl mx-auto lg:mx-0">
                 <div className="w-full max-w-md mx-auto lg:ml-0">
                     <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
-                        Join <span style={{ color: colors.green }}>tash</span>
+                        Join <span style={{ color: colors.green }}>tash.</span>
                     </h1>
                     <p className="text-zinc-400 text-lg mb-8">
                         The premier portfolio and trading platform for collectors.
@@ -200,7 +200,7 @@ export default function SignUpPage() {
                     </p>
 
                     <p className="mt-6 text-center text-xs text-zinc-600">
-                        By continuing, you agree to tash&apos;s{" "}
+                        By continuing, you agree to tash.&apos;s{" "}
                         <span className="text-zinc-400 cursor-pointer hover:text-white transition-colors">
                             Terms of Service
                         </span>{" "}

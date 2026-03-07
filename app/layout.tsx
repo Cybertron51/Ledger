@@ -34,8 +34,8 @@ import { mapDBCardToAssetData } from "@/lib/market-data";
 
 export const metadata: Metadata = {
   title: {
-    default: "tash — Trading Card Exchange",
-    template: "%s · tash",
+    default: "tash. — Trading Card Exchange",
+    template: "%s · tash.",
   },
   description:
     "Institutional-grade trading for PSA 8+ graded cards. Real-time price discovery, order books, and secure vault storage.",
@@ -51,7 +51,7 @@ export const metadata: Metadata = {
     google: "SWWyYQ61cKdxzvyEMKqijk7OaNzFQLIInQo8F6tgxUs",
   },
   openGraph: {
-    title: "tash — Trading Card Exchange",
+    title: "tash. — Trading Card Exchange",
     description: "Institutional-grade trading for PSA-graded collectibles.",
     type: "website",
   },
