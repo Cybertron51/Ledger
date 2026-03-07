@@ -18,25 +18,49 @@ interface SignInModalProps {
 
 export function SignInModal({ onClose }: SignInModalProps) {
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [token, setToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [otpSent, setOtpSent] = useState(false);
 
   const router = useRouter();
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSendOtp(e: React.FormEvent) {
     e.preventDefault();
     if (!supabase) return;
     setLoading(true);
     setErrorMsg("");
 
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      const { error } = await supabase.auth.signInWithOtp({
+        email,
+      });
+      if (error) throw error;
+      setOtpSent(true);
+    } catch (err: any) {
+      setErrorMsg(err.message || "Failed to send code.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleVerifyOtp(e: React.FormEvent) {
+    e.preventDefault();
+    if (!supabase) return;
+    setLoading(true);
+    setErrorMsg("");
+
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        email,
+        token,
+        type: 'email',
+      });
       if (error) throw error;
       onClose();
       router.refresh();
     } catch (err: any) {
-      setErrorMsg(err.message || "Failed to authenticate.");
+      setErrorMsg(err.message || "Invalid or expired code.");
     } finally {
       setLoading(false);
     }
@@ -97,48 +121,82 @@ export function SignInModal({ onClose }: SignInModalProps) {
           Trade and manage your card portfolio.
         </p>
 
-        <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-3">
-          {errorMsg && (
-            <div className="rounded-[8px] p-3 text-[12px] font-medium" style={{ background: "rgba(255, 60, 60, 0.1)", color: colors.red, border: `1px solid rgba(255, 60, 60, 0.2)` }}>
-              {errorMsg}
-            </div>
-          )}
-          <input
-            type="email"
-            placeholder="Email address"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            className="w-full rounded-[10px] border px-4 py-[11px] text-[13px] outline-none transition-colors"
-            style={{
-              background: "transparent",
-              borderColor: colors.borderSubtle,
-              color: colors.textPrimary
-            }}
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            className="w-full rounded-[10px] border px-4 py-[11px] text-[13px] outline-none transition-colors"
-            style={{
-              background: "transparent",
-              borderColor: colors.borderSubtle,
-              color: colors.textPrimary
-            }}
-          />
+        {!otpSent ? (
+          <form onSubmit={handleSendOtp} className="mt-6 flex flex-col gap-3">
+            {errorMsg && (
+              <div className="rounded-[8px] p-3 text-[12px] font-medium" style={{ background: "rgba(255, 60, 60, 0.1)", color: colors.red, border: `1px solid rgba(255, 60, 60, 0.2)` }}>
+                {errorMsg}
+              </div>
+            )}
+            <input
+              type="email"
+              placeholder="Email address"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="w-full rounded-[10px] border px-4 py-[11px] text-[13px] outline-none transition-colors"
+              style={{
+                background: "transparent",
+                borderColor: colors.borderSubtle,
+                color: colors.textPrimary
+              }}
+            />
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="mt-2 flex w-full items-center justify-center gap-2 rounded-[10px] py-[11px] text-[13px] font-bold transition-all duration-150 active:scale-[0.98] disabled:opacity-70 disabled:active:scale-100"
-            style={{ background: colors.green, color: colors.textInverse }}
-          >
-            {loading ? <Loader2 size={16} className="animate-spin" /> : "Sign In"}
-          </button>
-        </form>
+            <button
+              type="submit"
+              disabled={loading}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-[10px] py-[11px] text-[13px] font-bold transition-all duration-150 active:scale-[0.98] disabled:opacity-70 disabled:active:scale-100"
+              style={{ background: colors.green, color: colors.textInverse }}
+            >
+              {loading ? <Loader2 size={16} className="animate-spin" /> : "Continue with Email"}
+            </button>
+          </form>
+        ) : (
+          <form onSubmit={handleVerifyOtp} className="mt-6 flex flex-col gap-3">
+            {errorMsg && (
+              <div className="rounded-[8px] p-3 text-[12px] font-medium" style={{ background: "rgba(255, 60, 60, 0.1)", color: colors.red, border: `1px solid rgba(255, 60, 60, 0.2)` }}>
+                {errorMsg}
+              </div>
+            )}
+
+            <div className="text-xs mb-2" style={{ color: colors.textSecondary }}>
+              We sent a 6-digit code to <strong>{email}</strong>.
+            </div>
+
+            <input
+              type="text"
+              placeholder="000000"
+              value={token}
+              onChange={(e) => setToken(e.target.value)}
+              required
+              maxLength={6}
+              className="w-full rounded-[10px] border px-4 py-[11px] text-[16px] outline-none transition-colors text-center tracking-widest font-mono"
+              style={{
+                background: "transparent",
+                borderColor: colors.borderSubtle,
+                color: colors.textPrimary
+              }}
+            />
+
+            <button
+              type="submit"
+              disabled={loading || token.length < 6}
+              className="mt-2 flex w-full items-center justify-center gap-2 rounded-[10px] py-[11px] text-[13px] font-bold transition-all duration-150 active:scale-[0.98] disabled:opacity-70 disabled:active:scale-100"
+              style={{ background: colors.green, color: colors.textInverse }}
+            >
+              {loading ? <Loader2 size={16} className="animate-spin" /> : "Verify Code"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setOtpSent(false)}
+              className="w-full text-xs hover:text-white transition-colors mt-1"
+              style={{ color: colors.textMuted }}
+            >
+              Use a different email
+            </button>
+          </form>
+        )}
 
         <div className="my-5 flex items-center">
           <div className="flex-1 border-t" style={{ borderColor: colors.borderSubtle }}></div>

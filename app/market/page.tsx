@@ -363,7 +363,7 @@ function MarketPageContent() {
       <aside
         className={cn(
           "flex flex-col overflow-y-auto border-r transition-transform duration-300 z-[100]",
-          isMobile ? "fixed inset-y-0 left-0 bottom-[64px]" : "relative", // 64px = BottomNav height
+          isMobile ? "fixed inset-y-0 left-0 bottom-0" : "relative",
           isMobile && !showSidebar ? "-translate-x-full" : "translate-x-0"
         )}
         style={{
@@ -468,7 +468,7 @@ function MarketPageContent() {
       </aside>
 
       {/* ── CENTER & RIGHT WRAPPER (Mobile scrollable, Desktop flex) ── */}
-      <div className="flex flex-1 flex-col md:flex-row overflow-y-auto md:overflow-hidden pb-[64px] md:pb-0">
+      <div className="flex flex-1 flex-col md:flex-row overflow-y-auto md:overflow-hidden">
 
         {/* ── CENTER: Chart + Stats + Grid ─────────────────── */}
         <main className="flex min-w-0 flex-1 flex-col md:overflow-y-auto" style={{ background: colors.background }}>

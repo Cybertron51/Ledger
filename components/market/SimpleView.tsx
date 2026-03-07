@@ -168,13 +168,13 @@ function TradeModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center sm:items-center"
+      className="fixed inset-0 z-[200] flex items-end justify-center sm:items-center"
       style={{ background: "rgba(0,0,0,0.72)" }}
       onClick={onClose}
     >
       <div
-        className="w-full max-w-sm rounded-t-[24px] p-6 sm:rounded-[20px]"
-        style={{ background: colors.surface, border: `1px solid ${colors.border}` }}
+        className="w-full max-w-sm rounded-t-[24px] p-6 sm:rounded-[20px] overflow-y-auto"
+        style={{ background: colors.surface, border: `1px solid ${colors.border}`, maxHeight: "calc(100dvh - 80px)" }}
         onClick={(e) => e.stopPropagation()}
       >
         {/* ── Header ── */}
@@ -404,16 +404,18 @@ function TradeModal({
               </div>
             )}
 
-            <button
-              onClick={handleConfirm}
-              disabled={!canAfford || price <= 0}
-              className="mt-2 w-full rounded-[12px] py-[13px] text-[14px] font-bold transition-all active:scale-[0.98] disabled:opacity-40"
-              style={{ background: accent, color: colors.textInverse }}
-            >
-              {!canAfford
-                ? "Insufficient funds"
-                : `Place ${side === "buy" ? "bid" : "ask"}`}
-            </button>
+            <div className="mt-6 w-full pb-6">
+              <button
+                onClick={handleConfirm}
+                disabled={!canAfford || price <= 0}
+                className="w-full rounded-[12px] py-[16px] text-[15px] font-bold transition-all active:scale-[0.98] disabled:opacity-40"
+                style={{ background: accent, color: colors.textInverse }}
+              >
+                {!canAfford
+                  ? "Insufficient funds"
+                  : `Place ${side === "buy" ? "bid" : "ask"}`}
+              </button>
+            </div>
           </>
         )}
       </div>

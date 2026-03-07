@@ -407,7 +407,7 @@ export default function PortfolioPage() {
     <div
       className="flex flex-col md:flex-row"
       style={{
-        height: isMobile ? `calc(100dvh - ${layout.chromeHeight} - 64px)` : `calc(100dvh - ${layout.chromeHeight})`,
+        height: `calc(100dvh - ${layout.chromeHeight})`,
         overflow: "hidden"
       }}
     >

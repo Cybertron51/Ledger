@@ -248,7 +248,37 @@ export function Navigation() {
         )}
 
         {/* ── Right Controls ───────────────────────── */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-[6px] md:gap-2">
+          {/* Mobile Primary Nav */}
+          {isMobile && (
+            <div className="flex items-center gap-[6px] mr-1">
+              <Link
+                href="/market"
+                className="p-1 transition-colors"
+                style={{ color: pathname.startsWith("/market") ? colors.green : colors.textSecondary }}
+                aria-label="Market"
+              >
+                <TrendingUp size={20} strokeWidth={pathname.startsWith("/market") ? 2.5 : 2} />
+              </Link>
+              <Link
+                href="/scan"
+                className="p-1 transition-colors"
+                style={{ color: pathname.startsWith("/scan") ? colors.green : colors.textSecondary }}
+                aria-label="Upload"
+              >
+                <Camera size={20} strokeWidth={pathname.startsWith("/scan") ? 2.5 : 2} />
+              </Link>
+              <Link
+                href="/portfolio"
+                className="p-1 transition-colors"
+                style={{ color: pathname.startsWith("/portfolio") ? colors.green : colors.textSecondary }}
+                aria-label="Portfolio"
+              >
+                <BarChart2 size={20} strokeWidth={pathname.startsWith("/portfolio") ? 2.5 : 2} />
+              </Link>
+            </div>
+          )}
+
           {/* Upload Link (Desktop) */}
           {!isMobile && (
             <Link
@@ -336,53 +366,7 @@ export function Navigation() {
         </div>
       </header>
 
-      {/* ── Bottom Navigation (Mobile) ───────────── */}
-      {isMobile && (
-        <nav
-          className="fixed bottom-0 left-0 right-0 flex items-center justify-around border-t px-2 pb-safe-area-inset-bottom"
-          style={{
-            height: "64px",
-            backgroundColor: colors.background,
-            borderColor: colors.border,
-            zIndex: 100,
-          }}
-        >
-          {/* Market */}
-          <Link
-            href="/market"
-            className="flex flex-col items-center gap-1 p-2"
-            style={{ color: pathname.startsWith("/market") ? colors.green : colors.textSecondary }}
-          >
-            <TrendingUp size={20} strokeWidth={pathname.startsWith("/market") ? 2.5 : 2} />
-            <span className="text-[10px] font-bold uppercase tracking-wider">Market</span>
-          </Link>
 
-          {/* Scan / Upload */}
-          <Link
-            href="/scan"
-            className="flex -translate-y-4 flex-col items-center justify-center rounded-full border-4 shadow-lg active:scale-95"
-            style={{
-              width: 56,
-              height: 56,
-              backgroundColor: colors.green,
-              borderColor: colors.background,
-              color: colors.textInverse,
-            }}
-          >
-            <Camera size={24} strokeWidth={2.5} />
-          </Link>
-
-          {/* Portfolio */}
-          <Link
-            href="/portfolio"
-            className="flex flex-col items-center gap-1 p-2"
-            style={{ color: pathname.startsWith("/portfolio") ? colors.green : colors.textSecondary }}
-          >
-            <BarChart2 size={20} strokeWidth={pathname.startsWith("/portfolio") ? 2.5 : 2} />
-            <span className="text-[10px] font-bold uppercase tracking-wider">Portfolio</span>
-          </Link>
-        </nav>
-      )}
 
       {showSignIn && <SignInModal onClose={() => setShowSignIn(false)} />}
       <CommandMenu open={showSearch} setOpen={setShowSearch} />
