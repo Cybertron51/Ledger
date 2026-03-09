@@ -10,6 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getMarketCards } from "@/lib/db/cards";
 import { fetchPSAImage, fetchPSAMetadata, uploadCardImageToStorage, uploadRawScanToStorage } from "@/lib/psa";
+import { fetchJustTCGPrice } from "@/lib/justtcg";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_GENERATIVE_API_KEY ?? "");
 
@@ -26,7 +27,9 @@ Return exactly this structure:
   "setName": "Base Set",
   "year": 1999,
   "psaGrade": 10,
-  "category": "pokemon"
+  "category": "pokemon",
+  "cleanSearchName": "Charizard",
+  "cleanSearchSet": "Base Set"
 }
 
 Valid values:
@@ -39,6 +42,8 @@ Valid values:
 - year: Read the year from the PSA label. If not readable, estimate from the card design. Return as a number.
 - psaGrade: Read the numeric grade from the PSA label. The grade is the large number on the label, often preceded by a text descriptor like "GEM MT" (10), "MINT" (9), "NM-MT" (8), "NM" (7), etc. Return just the number (e.g. 10, 9, 8). If not readable, return null.
 - category: "pokemon" if it's a Pokémon card, "sports" if it's a sports card (baseball, basketball, football, etc), "other" for anything else.
+- cleanSearchName: provide a clean, simplified name for a pricing search (e.g. if the label says "FA/PIKACHU", return "Pikachu").
+- cleanSearchSet: provide a clean, simplified set name (e.g. if the label says "POKEMON SWORD AND SHIELD CROWN ZENITH", just return "Crown Zenith").
 
 Return ONLY the JSON.`;
 }
@@ -56,17 +61,23 @@ export async function POST(req: NextRequest) {
 
     // Helper: build card object from PSA metadata
     function buildCardFromPSA(psaData: any, certNumber: string): any {
+      const name = psaData.Subject || psaData.Player || "Unknown Card";
+      const set = psaData.CardSet || psaData.Brand || "Unknown Set";
+
       const card: any = {
         isFullSlabVisible: true,
         certNumber,
-        name: psaData.Subject || psaData.Player || "Unknown Card",
-        set: psaData.CardSet || psaData.Brand || "Unknown Set",
+        name: name,
+        set: set,
         year: parseInt(psaData.Year) || null,
         cardNumber: psaData.CardNumber || null,
         estimatedGrade: psaData.CardGrade
           ? parseInt(psaData.CardGrade.replace(/\D/g, "")) || 9
           : 9,
         category: "pokemon",
+        // PSA often uses "FA" for Full Art, "H" for Holo, etc.
+        searchName: name.replace(/\bFA\b/g, "Full Art").replace(/\bH\b/g, "Holo").replace(/\//g, " ").trim(),
+        searchSet: set.replace(/POKEMON SWORD AND SHIELD/i, "").trim(),
       };
 
       const subject = (psaData.Subject || "").toLowerCase();
@@ -136,6 +147,8 @@ export async function POST(req: NextRequest) {
           cardNumber: null,
           estimatedGrade: aiResult.psaGrade || 9,
           category: aiResult.category || "pokemon",
+          searchName: aiResult.cleanSearchName || aiResult.cardName,
+          searchSet: aiResult.cleanSearchSet || aiResult.setName,
         };
 
         if (extractedCert && !psaData) {
@@ -156,10 +169,11 @@ export async function POST(req: NextRequest) {
     }
 
     // ─── Post-Identification: Parallel tasks ───
-    const [dbCards, loadedImageUrl, loadedRawImageUrl] = await Promise.all([
+    const [dbCards, loadedImageUrl, loadedRawImageUrl, pricing] = await Promise.all([
       getMarketCards(),
       determineImageUrl(card.certNumber),
       uploadRawScanToStorage(imageBase64, mimeType),
+      fetchJustTCGPrice(card.searchName || card.name, card.searchSet || card.set, card.category, card.cardNumber)
     ]);
 
     imageUrl = loadedImageUrl;
@@ -212,7 +226,7 @@ export async function POST(req: NextRequest) {
       matchedSymbol: matchedAsset?.symbol ?? null,
       imageUrl,
       rawImageUrl,
-      pricing: null,
+      pricing: pricing || null,
       validation: {
         isFullSlabVisible: card.isFullSlabVisible,
         isCleanBackground: card.isCleanBackground,

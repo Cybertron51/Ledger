@@ -510,7 +510,7 @@ function MarketPageContent() {
                   )}
                 </div>
                 <p className="mt-[3px] text-[11px] uppercase tracking-wider" style={{ color: colors.textMuted }}>
-                  {selected.symbol} · {selected.set}
+                  {selected.set}
                 </p>
               </div>
             </div>

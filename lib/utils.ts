@@ -51,3 +51,16 @@ export function getPriceDirection(change: number): "up" | "down" | "flat" {
   if (change < 0) return "down";
   return "flat";
 }
+
+/** Generate a consistent Ticker/Symbol for a card */
+export function generateSymbol(
+  name: string,
+  grade: number | string,
+  set: string,
+  year: number | string
+): string {
+  const cleanName = name.replace(/[^a-zA-Z0-9]/g, "").slice(0, 3).toUpperCase();
+  const cleanSet = set.replace(/[^a-zA-Z0-9]/g, "").slice(0, 4).toUpperCase();
+  const cleanGrade = grade.toString().replace(/\D/g, "");
+  return `${cleanName}${cleanGrade}-${cleanSet}-${year}`;
+}

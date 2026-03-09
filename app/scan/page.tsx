@@ -23,7 +23,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { colors, layout } from "@/lib/theme";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, generateSymbol } from "@/lib/utils";
 import { type VaultHolding } from "@/lib/vault-data";
 import { insertVaultHolding, updateVaultHolding } from "@/lib/db/vault";
 
@@ -433,6 +433,12 @@ export default function ScanPage() {
           rawImageUrl: data.rawImageUrl,
           pricing: data.pricing,
         };
+
+        // Auto-populate estimated value if provided by JustTCG
+        if (data.pricing?.mid) {
+          setEstimatedValues(ev => ({ ...ev, [item.id]: item.id in ev ? ev[item.id] : data.pricing.mid }));
+        }
+
         return newScans;
       });
     } catch (err: any) {
@@ -462,7 +468,12 @@ export default function ScanPage() {
       const newHolding: VaultHolding = {
         id: holdingId, // Use the generated UUID
         name: result.name ?? "Unknown Card",
-        symbol: item.matchedSymbol ?? `SCAN-${Date.now()}`,
+        symbol: item.matchedSymbol ?? generateSymbol(
+          result.name ?? "Unknown",
+          result.estimatedGrade ?? 9,
+          result.set ?? "Unknown",
+          result.year ?? new Date().getFullYear()
+        ),
         grade: Math.round(result.estimatedGrade ?? 9),
         set: result.set ?? "Unknown Set",
         year: result.year ?? new Date().getFullYear(),
