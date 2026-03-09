@@ -247,6 +247,12 @@ export default function ScanPage() {
     });
   }
 
+  function toggleSelection(id: string) {
+    setScans((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, selected: !s.selected } : s))
+    );
+  }
+
   // ── Auto-analyze Queue ─────────────────────────────────
   // Removed automatic transition. The user now manually triggers onStartAnalysis.
   useEffect(() => {
@@ -408,8 +414,9 @@ export default function ScanPage() {
 
       // We also check against existing portfolio to be safe (client side first pass)
       // `holdings` comes from the top-level usePortfolio hook
+      // EXEMPT: If we are in re-upload mode, the current item being re-uploaded is NOT a duplicate of itself.
       const existingHolding = data.card.certNumber ?
-        holdings.find(h => h.certNumber === data.card.certNumber) : null;
+        holdings.find(h => h.certNumber === data.card.certNumber && h.id !== reuploadId) : null;
 
       if (isDuplicateInBatch || existingHolding) {
         throw new Error(`Duplicate PSA Certificate: ${data.card.certNumber}`);
@@ -587,10 +594,9 @@ export default function ScanPage() {
             onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
             onDragLeave={() => setDragOver(false)}
             onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files); }}
-            onSwitchToUpload={() => { setCaptureTab("upload"); setCameraError(null); }}
-            onToggleSelection={(id) => {
-              setScans(prev => prev.map(s => s.id === id ? { ...s, selected: !s.selected } : s));
-            }}
+            onSwitchToUpload={() => setCaptureTab("upload")}
+            onToggleSelection={toggleSelection}
+            reuploadId={reuploadId}
           />
         )}
 
@@ -640,6 +646,7 @@ interface CaptureStageProps {
   onDrop: (e: React.DragEvent) => void;
   onSwitchToUpload: () => void;
   onToggleSelection: (id: string) => void;
+  reuploadId?: string | null;
 }
 
 function CaptureStage({
@@ -659,6 +666,7 @@ function CaptureStage({
   onDrop,
   onSwitchToUpload,
   onToggleSelection,
+  reuploadId,
 }: CaptureStageProps) {
   const selectedCount = scans.filter(s => s.selected !== false).length;
 
@@ -675,10 +683,12 @@ function CaptureStage({
             margin: 0,
           }}
         >
-          Scan a Card
+          {reuploadId ? "Re-scan Card" : "Scan a Card"}
         </h1>
         <p style={{ fontSize: 13, color: colors.textMuted, marginTop: 4 }}>
-          Include the PSA label in the photo — AI identifies it instantly
+          {reuploadId
+            ? "Take a better photo of the slab label to fix the disapproval."
+            : "Include the PSA label in the photo — AI identifies it instantly"}
         </p>
       </div>
 
