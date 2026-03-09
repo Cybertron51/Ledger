@@ -83,10 +83,16 @@ export async function POST(req: NextRequest) {
       const subject = (psaData.Subject || "").toLowerCase();
       const cardSet = (psaData.CardSet || "").toLowerCase();
       const brand = (psaData.Brand || "").toLowerCase();
-      if (subject.includes("pokemon") || cardSet.includes("pokemon")) card.category = "pokemon";
-      else if (brand.includes("panini") || brand.includes("topps") || brand.includes("upper deck") || brand.includes("bowman")) card.category = "sports";
-      else if (subject.includes("magic") || cardSet.includes("magic") || cardSet.includes("mtg") || brand.includes("wizards")) card.category = "mtg";
-      else card.category = "other";
+
+      if (subject.includes("pokemon") || cardSet.includes("pokemon") || brand.includes("pokemon")) {
+        card.category = "pokemon";
+      } else if (brand.includes("panini") || brand.includes("topps") || brand.includes("upper deck") || brand.includes("bowman") || brand.includes("fleer")) {
+        card.category = "sports";
+      } else if (subject.includes("magic") || cardSet.includes("magic") || cardSet.includes("mtg") || brand.includes("wizards")) {
+        card.category = "mtg";
+      } else {
+        card.category = "other";
+      }
 
       return card;
     }

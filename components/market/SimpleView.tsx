@@ -650,15 +650,25 @@ export function SimpleView({ assets, sparklines, flashMap, onRequestSignIn, show
 
   const portfolioSymbols = new Set(vaultHoldings.map((h) => h.symbol));
 
-  // Market assets — exclude holdings, filter by search
+  // Market assets — exclude holdings, filter by search or showNonTradable toggle
   const marketAssets = useMemo(() => {
+    // 1. Exclude cards already in the user's portfolio
     const nonPortfolio = assets.filter((a) => !portfolioSymbols.has(a.symbol));
-    if (!query.trim()) return nonPortfolio;
-    const q = query.toLowerCase();
-    return assets.filter(
-      (a) => a.name.toLowerCase().includes(q) || a.set.toLowerCase().includes(q)
-    );
-  }, [assets, query]);
+
+    // 2. If searching, show all matching cards regardless of liquidity
+    if (query.trim()) {
+      const q = query.toLowerCase();
+      return assets.filter(
+        (a) =>
+          a.name.toLowerCase().includes(q) ||
+          a.set.toLowerCase().includes(q) ||
+          a.symbol.toLowerCase().includes(q)
+      );
+    }
+
+    // 3. If not searching, respect the liquidity filter
+    return showNonTradable ? nonPortfolio : nonPortfolio.filter(a => a.hasLiquidity);
+  }, [assets, query, portfolioSymbols, showNonTradable]);
 
   // Keep modal asset price live
   const modalAsset = tradeModal

@@ -130,14 +130,26 @@ function MarketPageContent() {
           return asset;
         });
         setAssets(newAssets);
-        const urlSymbol = searchParams?.get("symbol");
-        const initialVisible = newAssets.filter(a => a.hasLiquidity);
-        const initialLookup = initialVisible.length > 0 ? initialVisible : newAssets;
 
-        setSelectedSymbol((prev) => {
-          if (urlSymbol && initialLookup.some(a => a.symbol === urlSymbol)) return urlSymbol;
-          return initialLookup.some(a => a.symbol === prev) ? prev : initialLookup[0]?.symbol || "";
-        });
+        const urlSymbol = searchParams?.get("symbol");
+        if (urlSymbol) {
+          const target = newAssets.find(a => a.symbol === urlSymbol);
+          if (target) {
+            setSelectedSymbol(urlSymbol);
+            if (!target.hasLiquidity) {
+              setShowNonTradable(true);
+            }
+          } else {
+            // Default to first tradable or first overall
+            const initialVisible = newAssets.filter(a => a.hasLiquidity);
+            const fallback = initialVisible[0]?.symbol || newAssets[0]?.symbol || "";
+            setSelectedSymbol(fallback);
+          }
+        } else {
+          const initialVisible = newAssets.filter(a => a.hasLiquidity);
+          const fallback = initialVisible[0]?.symbol || newAssets[0]?.symbol || "";
+          setSelectedSymbol(prev => prev || fallback);
+        }
       }
       setIsLoading(false);
     }
@@ -329,7 +341,7 @@ function MarketPageContent() {
         </div>
 
         <SimpleView
-          assets={visibleAssets}
+          assets={assets}
           sparklines={sparklines}
           flashMap={flashMap}
           onRequestSignIn={() => setShowSignIn(true)}

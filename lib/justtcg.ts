@@ -30,18 +30,15 @@ export async function fetchJustTCGPrice(
         return null;
     }
 
-    // Currently only Pokémon is supported by JustTCG's v1 API for detailed conditioning
-    if (category.toLowerCase() !== "pokemon") {
-        return null;
-    }
+    // Removal of category restriction based on user request.
+    // JustTCG will be queried for all card types.
 
     try {
         // 1. Search for the card ID
         // Combine name + set into the query for better matching, as strict 'set' parameter often requires IDs.
         const query = `${name} ${setName}`.trim();
         const searchParams = new URLSearchParams({
-            q: query,
-            game: "pokemon"
+            q: query
         });
 
         // Some card numbers from PSA are like "4/102". JustTCG might expect just "4".
