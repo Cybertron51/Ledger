@@ -88,9 +88,9 @@ export async function fetchPSAImage(certNumber: string): Promise<string | null> 
         }
 
         // Find the front image
-        const frontImage = data.find((img: any) => img.IsFront === true);
-        console.log(`[PSA Images] Front image URL: ${frontImage?.ImageUrl || "none"}`);
-        return frontImage?.ImageUrl || null;
+        const frontImage = data.find((img: any) => img.IsFrontImage === true);
+        console.log(`[PSA Images] Front image URL: ${frontImage?.ImageURL || "none"}`);
+        return frontImage?.ImageURL || null;
     } catch (error) {
         console.error("[PSA Images] Exception:", error);
         return null;
