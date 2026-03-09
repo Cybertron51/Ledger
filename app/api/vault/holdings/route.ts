@@ -123,6 +123,29 @@ export async function POST(req: NextRequest) {
         }
     }
 
+    if (certNumber) {
+        const { data: existingHolding } = await supabaseAdmin
+            .from("vault_holdings")
+            .select("id, user_id")
+            .eq("cert_number", certNumber)
+            .single();
+
+        if (existingHolding) {
+            if (existingHolding.user_id === auth.userId) {
+                return NextResponse.json({
+                    error: "This card is already in your vault.",
+                    holdingId: existingHolding.id,
+                    code: "DUPLICATE_HOLDING"
+                }, { status: 409 });
+            } else {
+                return NextResponse.json({
+                    error: "This card is already registered in another user's vault.",
+                    code: "CERT_COLLISION"
+                }, { status: 409 });
+            }
+        }
+    }
+
     const { data, error } = await supabaseAdmin
         .from("vault_holdings")
         .insert({

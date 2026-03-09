@@ -50,14 +50,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const validMimeTypes = ["image/jpeg", "image/png", "image/gif", "image/webp"];
-    if (!validMimeTypes.includes(mimeType)) {
-      return NextResponse.json(
-        { error: "Unsupported image type" },
-        { status: 400 }
-      );
-    }
-
     // Helper: build card object from PSA metadata
     function buildCardFromPSA(psaData: any, certNumber: string): any {
       const card: any = {
@@ -73,7 +65,6 @@ export async function POST(req: NextRequest) {
         category: "pokemon",
       };
 
-      // Refine category from PSA data
       const subject = (psaData.Subject || "").toLowerCase();
       const cardSet = (psaData.CardSet || "").toLowerCase();
       const brand = (psaData.Brand || "").toLowerCase();
@@ -85,178 +76,105 @@ export async function POST(req: NextRequest) {
       return card;
     }
 
-    // Helper: fetch PSA image and upload to Supabase
     async function determineImageUrl(certNumber: string | null): Promise<string | null> {
       if (!certNumber) return null;
-      console.log(`Attempting to fetch PSA image for cert ${certNumber}`);
       const psaImageUrl = await fetchPSAImage(certNumber);
       if (psaImageUrl) {
-        console.log(`Found PSA image, uploading to Supabase...`);
-        const supabaseUrl = await uploadCardImageToStorage(psaImageUrl, certNumber);
-        if (supabaseUrl) {
-          console.log(`Successfully uploaded PSA image: ${supabaseUrl}`);
-          return supabaseUrl;
-        }
+        return await uploadCardImageToStorage(psaImageUrl, certNumber);
       }
       return null;
     }
 
-    // ─── FAST PATH: barcode cert number already available → start with PSA API ───
+    let card: any = null;
+    let imageUrl: string | null = null;
+    let rawImageUrl: string | null = null;
+    let psaData: any = null;
+
+    // ─── FAST PATH: barcode cert number already available ───
     if (certNumberLocalScan) {
-      console.log(`Barcode cert number detected: ${certNumberLocalScan} — using PSA API first`);
-      const psaData = await fetchPSAMetadata(certNumberLocalScan);
+      console.log(`Barcode Detected: ${certNumberLocalScan}`);
+      psaData = await fetchPSAMetadata(certNumberLocalScan);
 
       if (psaData) {
-        const card = buildCardFromPSA(psaData, certNumberLocalScan);
+        card = buildCardFromPSA(psaData, certNumberLocalScan);
+      }
+    }
 
-        const needsGrade = !psaData.CardGrade;
-        const needsName = card.name === "Unknown Card";
-        const needsSet = card.set === "Unknown Set";
+    // ─── SLOW PATH: fallback or no barcode → Gemini AI ───
+    if (!card) {
+      console.log("Using Gemini AI identification...");
+      const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
+      const result = await model.generateContent([
+        { inlineData: { mimeType, data: imageBase64 } },
+        { text: buildPrompt() },
+      ]);
 
-        // If PSA didn't return a grade, name, or set, use Gemini to read from the image
-        if (needsGrade || needsName || needsSet) {
-          console.warn(`PSA API returned incomplete data for ${certNumberLocalScan} — using Gemini to extract missing fields`);
-          const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
-          const result = await model.generateContent([
-            { inlineData: { mimeType, data: imageBase64 } },
-            { text: buildPrompt() },
-          ]);
-          const rawText = result.response.text();
-          const cleaned = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
-          try {
-            const aiResult = JSON.parse(cleaned);
-            if (needsGrade && aiResult.psaGrade) {
-              console.log(`Gemini extracted grade: ${aiResult.psaGrade}`);
-              card.estimatedGrade = aiResult.psaGrade;
-            }
-            if (needsName && aiResult.cardName && aiResult.cardName !== "Unknown Card") {
-              console.log(`Gemini extracted name: ${aiResult.cardName}`);
-              card.name = aiResult.cardName;
-            }
-            if (needsSet && aiResult.setName && aiResult.setName !== "Unknown Set") {
-              console.log(`Gemini extracted set: ${aiResult.setName}`);
-              card.set = aiResult.setName;
-            }
-          } catch {
-            console.error("Failed to parse Gemini fallback response");
+      const rawText = result.response.text();
+      const cleaned = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+
+      try {
+        const aiResult = JSON.parse(cleaned);
+        const extractedCert = aiResult.certNumber || null;
+        card = {
+          isFullSlabVisible: !!aiResult.isFullSlabVisible,
+          certNumber: extractedCert,
+          name: aiResult.cardName || "Unknown Card",
+          set: aiResult.setName || "Unknown Set",
+          year: aiResult.year || null,
+          cardNumber: null,
+          estimatedGrade: aiResult.psaGrade || 9,
+          category: aiResult.category || "pokemon",
+        };
+
+        if (extractedCert && !psaData) {
+          psaData = await fetchPSAMetadata(extractedCert);
+          if (psaData) {
+            const enriched = buildCardFromPSA(psaData, extractedCert);
+            card = { ...card, ...enriched, isFullSlabVisible: true };
           }
         }
-
-        // Fuzzy-match, image fetch, and raw scan upload in parallel
-        const [matchedAsset, imageUrl, rawImageUrl] = await Promise.all([
-          getMarketCards().then((dbCards) => {
-            const cardNameLower = (card.name ?? "").toLowerCase();
-            return (dbCards ?? []).find((a) => {
-              const assetName = a.name.toLowerCase();
-              const firstWord = assetName.split(" ")[0];
-              return (
-                assetName.includes(cardNameLower) ||
-                cardNameLower.includes(assetName) ||
-                (firstWord.length > 3 && cardNameLower.includes(firstWord))
-              );
-            }) ?? null;
-          }),
-          determineImageUrl(certNumberLocalScan),
-          uploadRawScanToStorage(imageBase64, mimeType),
-        ]);
-
-        return NextResponse.json({
-          card,
-          matchedSymbol: matchedAsset?.symbol ?? null,
-          imageUrl,
-          rawImageUrl,
-          pricing: null,
-        });
-      }
-
-      // PSA lookup failed for this cert number — fall through to full Gemini
-      console.warn(`PSA lookup failed for cert ${certNumberLocalScan}, falling back to full Gemini extraction`);
-    }
-
-    // ─── SLOW PATH: no barcode → use Gemini AI to identify the card ───
-    console.log("No barcode cert number available — using Gemini AI to identify card");
-    const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
-    const result = await model.generateContent([
-      { inlineData: { mimeType, data: imageBase64 } },
-      { text: buildPrompt() },
-    ]);
-
-    const rawText = result.response.text();
-    const cleaned = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
-
-    let aiResult;
-    try {
-      aiResult = JSON.parse(cleaned);
-    } catch {
-      return NextResponse.json({ error: "Failed to parse AI response" }, { status: 422 });
-    }
-
-    // Build card from AI result
-    const extractedCert = aiResult.certNumber || null;
-    const card: any = {
-      isFullSlabVisible: !!aiResult.isFullSlabVisible,
-      certNumber: extractedCert,
-      name: aiResult.cardName || "Unknown Card",
-      set: aiResult.setName || "Unknown Set",
-      year: aiResult.year || null,
-      cardNumber: null,
-      estimatedGrade: aiResult.psaGrade || null,
-      category: aiResult.category || "pokemon",
-    };
-
-    // If Gemini couldn't find a cert number, flag the card
-    if (!extractedCert) {
-      console.warn("Gemini could not detect a barcode or cert number — flagging card");
-      card.isFullSlabVisible = false;
-    }
-
-    // If Gemini extracted a cert number, enrich with PSA data
-    if (extractedCert) {
-      console.log(`Gemini extracted cert ${extractedCert} — enriching with PSA metadata`);
-      const psaData = await fetchPSAMetadata(extractedCert);
-
-      if (psaData) {
-        // If we found PSA data, the scan is definitely valid for our purposes
-        card.isFullSlabVisible = true;
-        card.name = psaData.Subject || psaData.Player || card.name;
-        card.set = psaData.CardSet || psaData.Brand || card.set;
-        card.year = parseInt(psaData.Year) || card.year;
-        card.cardNumber = psaData.CardNumber || null;
-        card.estimatedGrade = psaData.CardGrade
-          ? parseInt(psaData.CardGrade.replace(/\D/g, "")) || card.estimatedGrade || 9
-          : card.estimatedGrade || 9;
-
-        const sub = (psaData.Subject || "").toLowerCase();
-        const set = (psaData.CardSet || "").toLowerCase();
-        const bnd = (psaData.Brand || "").toLowerCase();
-
-        if (sub.includes("pokemon") || set.includes("pokemon")) card.category = "pokemon";
-        else if (bnd.includes("panini") || bnd.includes("topps") || bnd.includes("upper deck") || bnd.includes("bowman")) card.category = "sports";
-        else if (sub.includes("magic") || set.includes("magic") || set.includes("mtg") || bnd.includes("wizards")) card.category = "mtg";
-        else card.category = "other";
-      } else {
-        console.warn(`PSA lookup returned no data for cert ${extractedCert} — using AI metadata only`);
-        // We do NOT set isFullSlabVisible to false here.
-        // We keep the AI's initial determination (line 196) and metadata.
+      } catch (e) {
+        console.error("AI Parse Error:", e);
+        return NextResponse.json({ error: "Failed to identify card" }, { status: 422 });
       }
     }
 
-    // Fuzzy-match, image fetch, and raw scan upload in parallel
-    const cardNameLower = (card.name ?? "").toLowerCase();
-    const [dbCards, imageUrl, rawImageUrl] = await Promise.all([
+    // ─── Post-Identification: Parallel tasks ───
+    const [dbCards, loadedImageUrl, loadedRawImageUrl] = await Promise.all([
       getMarketCards(),
       determineImageUrl(card.certNumber),
       uploadRawScanToStorage(imageBase64, mimeType),
     ]);
 
-    const matchedAsset = (dbCards ?? []).find((a) => {
+    imageUrl = loadedImageUrl;
+    rawImageUrl = loadedRawImageUrl;
+
+    // ─── Symbol Matching (Crucial for preventing duplicates) ───
+    const cardNameLower = (card.name ?? "").toLowerCase();
+    const cardSetLower = (card.set ?? "").toLowerCase();
+
+    const matchedAsset = (dbCards ?? []).find((a: any) => {
       const assetName = a.name.toLowerCase();
+      const assetSet = (a.set_name || "").toLowerCase();
+
+      // Strict match if we have PSA data
+      if (psaData) {
+        if (assetName === cardNameLower &&
+          assetSet === cardSetLower &&
+          a.year === card.year &&
+          a.psa_grade === card.estimatedGrade) {
+          return true;
+        }
+      }
+
+      // Fuzzy match fallback
       const firstWord = assetName.split(" ")[0];
-      return (
-        assetName.includes(cardNameLower) ||
-        cardNameLower.includes(assetName) ||
-        (firstWord.length > 3 && cardNameLower.includes(firstWord))
-      );
+      const isNameMatch = assetName.includes(cardNameLower) || cardNameLower.includes(assetName) || (firstWord.length > 3 && cardNameLower.includes(firstWord));
+      const isSetMatch = assetSet.includes(cardSetLower) || cardSetLower.includes(assetSet);
+      const isGradeMatch = a.psa_grade === card.estimatedGrade;
+      const isYearMatch = a.year === card.year;
+
+      return isNameMatch && isSetMatch && isGradeMatch && isYearMatch;
     });
 
     return NextResponse.json({
@@ -268,9 +186,6 @@ export async function POST(req: NextRequest) {
     });
   } catch (error) {
     console.error("Scan API error:", error);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
