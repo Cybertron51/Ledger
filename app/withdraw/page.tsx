@@ -35,8 +35,60 @@ export default function WithdrawPage() {
     const [amount, setAmount] = useState<number | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-
+    const [resolutionLoading, setResolutionLoading] = useState(false);
     const { user, updateBalance, session, refreshProfile } = useAuth();
+
+    // ── Remediation Link ──────────────────────────────────
+    const handleResolveStripe = useCallback(async () => {
+        if (!user) return;
+        setResolutionLoading(true);
+        setError(null);
+        try {
+            const res = await fetch("/api/connect", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    userId: user.id,
+                    email: user.email,
+                    returnTo: "/withdraw"
+                }),
+            });
+            const data = await res.json();
+            if (data.url) {
+                window.location.href = data.url;
+            } else {
+                setError(data.error || "Could not generate resolution link");
+            }
+        } catch {
+            setError("Failed to connect to Stripe");
+        } finally {
+            setResolutionLoading(false);
+        }
+    }, [user]);
+
+    const handleSync = useCallback(async () => {
+        setLoading(true); // Reuse loading for sync
+        setError(null);
+        try {
+            const res = await fetch("/api/connect/sync", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${session?.access_token}`
+                },
+            });
+            const data = await res.json();
+            if (data.stripeOnboardingComplete) {
+                await refreshProfile();
+            } else {
+                setError(data.message || "Stripe says you still have requirements to complete.");
+            }
+        } catch {
+            setError("Failed to sync status.");
+        } finally {
+            setLoading(false);
+        }
+    }, [session, refreshProfile]);
 
     // Auto-refresh profile if onboarding looks incomplete
     // Require valid profile & stripe setup
@@ -98,31 +150,6 @@ export default function WithdrawPage() {
         paddingBottom: 40,
     };
 
-    const [syncing, setSyncing] = useState(false);
-
-    const handleSync = async () => {
-        setSyncing(true);
-        setError(null);
-        try {
-            const res = await fetch("/api/connect/sync", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    "Authorization": `Bearer ${session?.access_token}`
-                },
-            });
-            const data = await res.json();
-            if (data.onboardingComplete) {
-                refreshProfile();
-            } else {
-                setError(data.message || "Stripe says you're still not finished. Check your Stripe dashboard.");
-            }
-        } catch {
-            setError("Failed to sync. Connection error.");
-        } finally {
-            setSyncing(false);
-        }
-    };
 
     return (
         <div style={pageStyle}>
@@ -131,8 +158,11 @@ export default function WithdrawPage() {
                     {stage === "amount" && (
                         <AmountStage
                             onContinue={handleWithdraw}
+                            onResolve={handleResolveStripe}
+                            onSync={handleSync}
                             availableBalance={user?.withdrawableBalance ?? 0}
                             loading={loading}
+                            resolutionLoading={resolutionLoading}
                             error={error}
                         />
                     )}
@@ -155,13 +185,19 @@ export default function WithdrawPage() {
 
 function AmountStage({
     onContinue,
+    onResolve,
+    onSync,
     availableBalance,
     loading,
+    resolutionLoading,
     error,
 }: {
     onContinue: (amount: number) => void;
+    onResolve: () => void;
+    onSync: () => void;
     availableBalance: number;
     loading: boolean;
+    resolutionLoading: boolean;
     error: string | null;
 }) {
     const [selected, setSelected] = useState<number | null>(null);
@@ -265,18 +301,57 @@ function AmountStage({
             {displayError && (
                 <div
                     style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 8,
                         background: "rgba(255,80,0,0.1)",
                         border: `1px solid ${colors.red}44`,
-                        borderRadius: 10,
-                        padding: "10px 14px",
+                        borderRadius: 12,
+                        padding: "14px",
                         marginBottom: 16,
                     }}
                 >
-                    <AlertCircle size={14} style={{ color: colors.red, flexShrink: 0 }} />
-                    <span style={{ fontSize: 13, color: colors.red }}>{displayError}</span>
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                        <AlertCircle size={16} style={{ color: colors.red, flexShrink: 0, marginTop: 2 }} />
+                        <div style={{ flex: 1 }}>
+                            <span style={{ fontSize: 13, color: colors.red, lineHeight: 1.4, display: "block" }}>
+                                {displayError}
+                            </span>
+
+                            {/* Remediation Buttons */}
+                            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                                <button
+                                    onClick={onResolve}
+                                    disabled={resolutionLoading}
+                                    style={{
+                                        padding: "6px 12px",
+                                        borderRadius: 6,
+                                        fontSize: 12,
+                                        fontWeight: 600,
+                                        background: colors.red,
+                                        color: "#fff",
+                                        border: "none",
+                                        cursor: resolutionLoading ? "not-allowed" : "pointer",
+                                    }}
+                                >
+                                    {resolutionLoading ? "Loading..." : "Resolve on Stripe"}
+                                </button>
+                                <button
+                                    onClick={onSync}
+                                    disabled={loading}
+                                    style={{
+                                        padding: "6px 12px",
+                                        borderRadius: 6,
+                                        fontSize: 12,
+                                        fontWeight: 600,
+                                        background: "transparent",
+                                        color: colors.red,
+                                        border: `1px solid ${colors.red}44`,
+                                        cursor: loading ? "not-allowed" : "pointer",
+                                    }}
+                                >
+                                    {loading ? "Syncing..." : "Sync Status"}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
 
