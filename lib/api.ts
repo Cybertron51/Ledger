@@ -83,3 +83,17 @@ export async function apiPatch<T = unknown>(
     if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
     return res.json();
 }
+/**
+ * Convenience: DELETE with auto-auth.
+ */
+export async function apiDelete<T = unknown>(
+    path: string,
+    body?: unknown
+): Promise<T> {
+    const res = await api(path, {
+        method: "DELETE",
+        body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) throw new Error(`API error ${res.status}: ${await res.text()}`);
+    return res.json();
+}

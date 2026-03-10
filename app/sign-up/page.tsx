@@ -13,6 +13,9 @@ export default function SignUpPage() {
     const { user, isProfileComplete } = useAuth();
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
+    const [referralCode, setReferralCode] = useState("");
+    const [referralValid, setReferralValid] = useState<boolean | null>(null);
+    const [isCheckingReferral, setIsCheckingReferral] = useState(false);
     const [loading, setLoading] = useState(false);
     const [errorMsg, setErrorMsg] = useState("");
     const [successMsg, setSuccessMsg] = useState("");
@@ -30,9 +33,42 @@ export default function SignUpPage() {
         }
     }, [user, isProfileComplete, router]);
 
+    const handleReferralBlur = async () => {
+        if (!referralCode) {
+            setReferralValid(null);
+            return;
+        }
+        setIsCheckingReferral(true);
+        try {
+            const res = await fetch(`/api/referral/validate?code=${referralCode}`);
+            const data = await res.json();
+            setReferralValid(data.valid);
+            if (!data.valid) {
+                setErrorMsg("Invalid referral code.");
+            } else {
+                if (errorMsg === "Invalid referral code.") setErrorMsg("");
+            }
+        } catch (err) {
+            console.error("Referral validation failed:", err);
+        } finally {
+            setIsCheckingReferral(false);
+        }
+    };
+
     const handleSignUp = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!supabase) return;
+
+        if (!referralCode) {
+            setErrorMsg("Referral code is required.");
+            return;
+        }
+
+        if (referralValid === false) {
+            setErrorMsg("Please enter a valid referral code.");
+            return;
+        }
+
         setLoading(true);
         setErrorMsg("");
         setSuccessMsg("");
@@ -42,7 +78,10 @@ export default function SignUpPage() {
                 email,
                 password,
                 options: {
-                    data: { name: email.split("@")[0] },
+                    data: {
+                        name: email.split("@")[0],
+                        referral_code: referralCode
+                    },
                     emailRedirectTo: `${window.location.origin}/auth/callback`,
                 },
             });
@@ -63,6 +102,15 @@ export default function SignUpPage() {
 
     const handleGoogleOAuth = async () => {
         if (!supabase) return;
+        // For now, inform that referral codes are required via Email sign up
+        if (!referralCode || referralValid !== true) {
+            setErrorMsg("Please enter and validate a referral code first to join with Google.");
+            return;
+        }
+
+        // Note: Even if we validate here, the Supabase trigger might fail 
+        // if we can't pass the referral code to the raw_user_meta_data.
+        // We'll advise the user to use email for now if Google fails.
         await supabase.auth.signInWithOAuth({
             provider: "google",
             options: {
@@ -142,6 +190,26 @@ export default function SignUpPage() {
                             required
                             className="w-full bg-zinc-900 border border-zinc-800 rounded-xl py-4 px-4 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition-all font-mono"
                         />
+
+                        <div className="relative">
+                            <input
+                                type="text"
+                                placeholder="Referral Code"
+                                value={referralCode}
+                                onChange={(e) => {
+                                    setReferralCode(e.target.value.toUpperCase());
+                                    if (referralValid !== null) setReferralValid(null);
+                                }}
+                                onBlur={handleReferralBlur}
+                                required
+                                className={`w-full bg-zinc-900 border ${referralValid === true ? 'border-green-500/50' : referralValid === false ? 'border-red-500/50' : 'border-zinc-800'} rounded-xl py-4 px-4 text-white placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition-all font-mono uppercase`}
+                            />
+                            {isCheckingReferral && (
+                                <div className="absolute right-4 top-1/2 -translate-y-1/2">
+                                    <Loader2 size={16} className="animate-spin text-zinc-500" />
+                                </div>
+                            )}
+                        </div>
 
                         <button
                             type="submit"

@@ -2,10 +2,10 @@
 export const dynamic = "force-dynamic";
 
 import { useEffect, useState } from "react";
-import { apiGet, apiPatch } from "@/lib/api";
+import { apiGet, apiPatch, apiPost, apiDelete } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { colors, layout } from "@/lib/theme";
-import { Loader2, Check, Users, Package, ChevronUp, ChevronDown, X } from "lucide-react";
+import { Loader2, Check, Users, Package, ChevronUp, ChevronDown, X, Ticket, Plus, Trash2 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { SignInModal } from "@/components/auth/SignInModal";
 
@@ -17,7 +17,10 @@ export default function AdminPage() {
     const [usersList, setUsersList] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [showSignIn, setShowSignIn] = useState(false);
-    const [activeTab, setActiveTab] = useState<"intake" | "users">("intake");
+    const [activeTab, setActiveTab] = useState<"intake" | "users" | "referrals">("intake");
+    const [referralCodes, setReferralCodes] = useState<any[]>([]);
+    const [newCode, setNewCode] = useState({ code: "", description: "" });
+    const [isCreatingCode, setIsCreatingCode] = useState(false);
     const [sortConfig, setSortConfig] = useState<{ key: string; direction: "asc" | "desc" } | null>({ key: "last_login", direction: "desc" });
 
     const sortedUsers = [...usersList].sort((a, b) => {
@@ -46,6 +49,9 @@ export default function AdminPage() {
                 } else if (activeTab === "users") {
                     const data = await apiGet<any[]>(`/api/admin/users?t=${Date.now()}`);
                     setUsersList(data || []);
+                } else if (activeTab === "referrals") {
+                    const data = await apiGet<any[]>(`/api/admin/referrals?t=${Date.now()}`);
+                    setReferralCodes(data || []);
                 }
             } catch (err: any) {
                 // If it's a 403, fail silently for non-admins so we don't spam alerts.
@@ -70,6 +76,30 @@ export default function AdminPage() {
             await apiPatch("/api/admin/approve", { holdingId: id, action });
         } catch (err) {
             console.error(`Failed to ${action}:`, err);
+        }
+    }
+
+    async function createReferralCode() {
+        if (!newCode.code) return;
+        setIsCreatingCode(true);
+        try {
+            const created = await apiPost<any>(`/api/admin/referrals`, newCode);
+            setReferralCodes((prev) => [...prev, { ...created, usage_count: 0 }]);
+            setNewCode({ code: "", description: "" });
+        } catch (err: any) {
+            alert(`Failed to create code: ${err.message}`);
+        } finally {
+            setIsCreatingCode(false);
+        }
+    }
+
+    async function deleteReferralCode(id: string) {
+        if (!confirm("Are you sure you want to delete this referral code?")) return;
+        try {
+            await apiDelete<any>(`/api/admin/referrals`, { id });
+            setReferralCodes((prev) => prev.filter((c) => c.id !== id));
+        } catch (err: any) {
+            alert(`Failed to delete code: ${err.message}`);
         }
     }
 
@@ -146,6 +176,26 @@ export default function AdminPage() {
                         }}
                     >
                         <Users size={16} /> Users
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("referrals")}
+                        style={{
+                            background: "transparent",
+                            border: "none",
+                            padding: "8px 16px",
+                            cursor: "pointer",
+                            fontSize: 14,
+                            fontWeight: 600,
+                            color: activeTab === "referrals" ? colors.green : colors.textSecondary,
+                            borderBottom: activeTab === "referrals" ? `2px solid ${colors.green}` : "2px solid transparent",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            transform: "translateY(1px)",
+                            transition: "all 0.15s",
+                        }}
+                    >
+                        <Ticket size={16} /> Referrals
                     </button>
                 </div>
 
@@ -310,7 +360,7 @@ export default function AdminPage() {
                             </div>
                         )}
                     </>
-                ) : (
+                ) : activeTab === "users" ? (
                     <>
                         <p style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 24 }}>
                             View all registered users and their last login activity.
@@ -348,6 +398,87 @@ export default function AdminPage() {
                                                 </td>
                                                 <td style={{ padding: "12px 16px", fontSize: 13, color: colors.textSecondary, textAlign: "right" }}>
                                                     {u.last_login ? new Date(u.last_login).toLocaleString() : "Never"}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        )}
+                    </>
+                ) : (
+                    <>
+                        <p style={{ fontSize: 13, color: colors.textSecondary, marginBottom: 24 }}>
+                            Manage referral codes and track their usage. Users cannot sign up without a valid code.
+                        </p>
+
+                        <div style={{ background: colors.surfaceOverlay, border: `1px solid ${colors.border}`, borderRadius: 12, padding: 20, marginBottom: 24 }}>
+                            <h3 style={{ fontSize: 14, fontWeight: 700, color: colors.textPrimary, marginBottom: 16 }}>Create New Referral Code</h3>
+                            <div style={{ display: "flex", gap: 12 }}>
+                                <input
+                                    placeholder="CODE (e.g. BETA2025)"
+                                    value={newCode.code}
+                                    onChange={(e) => setNewCode({ ...newCode, code: e.target.value.toUpperCase() })}
+                                    style={{ flex: 1, background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 13, color: colors.textPrimary }}
+                                />
+                                <input
+                                    placeholder="Description (optional)"
+                                    value={newCode.description}
+                                    onChange={(e) => setNewCode({ ...newCode, description: e.target.value })}
+                                    style={{ flex: 2, background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 8, padding: "10px 12px", fontSize: 13, color: colors.textPrimary }}
+                                />
+                                <button
+                                    onClick={createReferralCode}
+                                    disabled={!newCode.code || isCreatingCode}
+                                    style={{
+                                        background: colors.green,
+                                        color: colors.background,
+                                        border: "none",
+                                        borderRadius: 8,
+                                        padding: "8px 16px",
+                                        fontWeight: 700,
+                                        fontSize: 13,
+                                        cursor: "pointer",
+                                        display: "flex",
+                                        alignItems: "center",
+                                        gap: 8,
+                                        opacity: (!newCode.code || isCreatingCode) ? 0.5 : 1
+                                    }}
+                                >
+                                    {isCreatingCode ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                                    Create
+                                </button>
+                            </div>
+                        </div>
+
+                        {referralCodes.length === 0 ? (
+                            <div style={{ padding: 48, textAlign: "center", background: colors.surfaceOverlay, border: `1px dashed ${colors.border}`, borderRadius: 16 }}>
+                                <p style={{ fontSize: 14, color: colors.textMuted, fontWeight: 500 }}>No referral codes created yet.</p>
+                            </div>
+                        ) : (
+                            <div style={{ background: colors.surfaceOverlay, border: `1px solid ${colors.border}`, borderRadius: 12, overflow: "hidden" }}>
+                                <table style={{ width: "100%", borderCollapse: "collapse" }}>
+                                    <thead style={{ background: colors.surface, borderBottom: `1px solid ${colors.border}` }}>
+                                        <tr>
+                                            <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 13, fontWeight: 600, color: colors.textSecondary }}>Code</th>
+                                            <th style={{ padding: "12px 16px", textAlign: "left", fontSize: 13, fontWeight: 600, color: colors.textSecondary }}>Description</th>
+                                            <th style={{ padding: "12px 16px", textAlign: "right", fontSize: 13, fontWeight: 600, color: colors.textSecondary }}>Usage</th>
+                                            <th style={{ padding: "12px 16px", textAlign: "right", fontSize: 13, fontWeight: 600, color: colors.textSecondary }}>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {referralCodes.map((c, i) => (
+                                            <tr key={c.id} style={{ borderBottom: i < referralCodes.length - 1 ? `1px solid ${colors.borderSubtle}` : "none" }}>
+                                                <td style={{ padding: "12px 16px", fontSize: 14, color: colors.green, fontWeight: 800 }}>{c.code}</td>
+                                                <td style={{ padding: "12px 16px", fontSize: 13, color: colors.textSecondary }}>{c.description || "—"}</td>
+                                                <td style={{ padding: "12px 16px", fontSize: 14, color: colors.textPrimary, textAlign: "right", fontWeight: 700 }}>{c.usage_count} users</td>
+                                                <td style={{ padding: "12px 16px", textAlign: "right" }}>
+                                                    <button
+                                                        onClick={() => deleteReferralCode(c.id)}
+                                                        style={{ background: "transparent", border: "none", color: colors.red, cursor: "pointer", opacity: 0.7 }}
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
                                                 </td>
                                             </tr>
                                         ))}
