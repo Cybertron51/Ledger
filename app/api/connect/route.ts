@@ -98,8 +98,8 @@ export async function POST(req: NextRequest) {
             const returnToParam = returnTo ? `&returnTo=${encodeURIComponent(returnTo)}` : "";
             const accountLink = await stripe.accountLinks.create({
                 account: stripeAccountId,
-                refresh_url: `${origin}/onboarding?step=4&status=refresh${returnToParam}`,
-                return_url: `${origin}/onboarding?step=4&status=success${returnToParam}`,
+                refresh_url: `${origin}/wallet-setup?status=refresh${returnToParam}`,
+                return_url: `${origin}/wallet-setup?status=success${returnToParam}`,
                 type: "account_onboarding",
             });
 
