@@ -11,7 +11,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BarChart2, TrendingUp, Search, Bell, ChevronDown, Camera, User } from "lucide-react";
+import { BarChart2, TrendingUp, Search, ChevronDown, Camera, User } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { colors, layout } from "@/lib/theme";
 import { useAuth } from "@/lib/auth";
@@ -323,16 +323,7 @@ export function Navigation() {
             )}
           </button>
 
-          {/* Notifications ─────────────────────────── */}
-          {isAuthenticated && !isMobile && (
-            <button
-              className="flex h-8 w-8 items-center justify-center rounded-[10px] transition-colors hover:bg-[#1E1E1E]"
-              style={{ color: colors.textSecondary }}
-              aria-label="Notifications"
-            >
-              <Bell size={16} strokeWidth={2} />
-            </button>
-          )}
+
 
           {/* Auth control ──────────────────────────── */}
           {isAuthenticated ? (
