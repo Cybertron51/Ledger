@@ -19,7 +19,7 @@ export default function AccountPage() {
 
   async function handleSignOut() {
     setSigningOut(true);
-    signOut();
+    await signOut();
     router.push("/");
   }
 
@@ -61,7 +61,7 @@ export default function AccountPage() {
         throw new Error("Failed to delete account");
       }
 
-      signOut();
+      await signOut();
       router.push("/");
       router.refresh();
     } catch (err) {

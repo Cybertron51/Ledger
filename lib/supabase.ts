@@ -26,5 +26,11 @@ if (!url || !key) {
 }
 
 export const supabase = url && key
-  ? createClient(url, key)
+  ? createClient(url, key, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    }
+  })
   : null;

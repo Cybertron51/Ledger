@@ -209,7 +209,10 @@ function AccountChip() {
             <div className="my-1 border-t" style={{ borderColor: colors.borderSubtle }} />
 
             <button
-              onClick={() => { signOut(); setOpen(false); }}
+              onClick={async () => {
+                await signOut();
+                setOpen(false);
+              }}
               className="w-full px-4 py-[9px] text-left text-[13px] transition-colors hover:bg-[#2A2A2A]"
               style={{ color: colors.red }}
             >

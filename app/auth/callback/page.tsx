@@ -12,7 +12,7 @@ export default function AuthCallbackPage() {
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        const handleCallback = async () => {
+        const handleCallback = async (retryCount = 0) => {
             if (!supabase) {
                 setError("Supabase client is not available.");
                 return;
@@ -22,6 +22,12 @@ export default function AuthCallbackPage() {
                 const { data: { session }, error: sessionError } = await supabase.auth.getSession();
 
                 if (sessionError) {
+                    // Check if it's the LockManager timeout error
+                    if (sessionError.message.includes("LockManager") && retryCount < 2) {
+                        console.warn(`Auth lock timeout, retrying... (${retryCount + 1})`);
+                        setTimeout(() => handleCallback(retryCount + 1), 500);
+                        return;
+                    }
                     throw sessionError;
                 }
 
@@ -39,7 +45,6 @@ export default function AuthCallbackPage() {
                     .single();
 
                 if (profileError && profileError.code !== 'PGRST116') {
-                    // PGRST116 means no rows found, which is fine for brand new users (though our DB trigger should create one)
                     throw profileError;
                 }
 
