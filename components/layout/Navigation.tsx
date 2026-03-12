@@ -43,6 +43,8 @@ function AccountChip() {
   const [open, setOpen] = useState(false);
   const [isRedirecting, setIsRedirecting] = useState(false);
 
+  const router = useRouter();
+
   if (!user) return null;
 
   async function handleStripeLogin() {
@@ -212,6 +214,7 @@ function AccountChip() {
               onClick={async () => {
                 await signOut();
                 setOpen(false);
+                router.push("/");
               }}
               className="w-full px-4 py-[9px] text-left text-[13px] transition-colors hover:bg-[#2A2A2A]"
               style={{ color: colors.red }}

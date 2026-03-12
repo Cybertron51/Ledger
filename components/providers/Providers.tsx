@@ -10,11 +10,15 @@ import React from "react";
 import { AuthProvider } from "@/lib/auth";
 import { PortfolioProvider } from "@/lib/portfolio-context";
 
+import { GlobalRouteCheck } from "./GlobalRouteCheck";
+
 export function Providers({ children }: { children: React.ReactNode }) {
     return (
         <AuthProvider>
             <PortfolioProvider>
-                {children}
+                <GlobalRouteCheck>
+                    {children}
+                </GlobalRouteCheck>
             </PortfolioProvider>
         </AuthProvider>
     );
