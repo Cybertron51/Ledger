@@ -29,7 +29,7 @@ interface OrderResult {
 
 export function TradePanel({ asset, orderBook, onRequestSignIn }: TradePanelProps) {
   const { user, isAuthenticated, updateBalance } = useAuth();
-  const { addHolding } = usePortfolio();
+  const { addHolding, refreshPortfolio } = usePortfolio();
 
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
@@ -39,14 +39,44 @@ export function TradePanel({ asset, orderBook, onRequestSignIn }: TradePanelProp
   const [result, setResult] = useState<OrderResult | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
 
+  const [justTCGPrice, setJustTCGPrice] = useState<{ low: number | null; mid: number | null; high: number | null } | null>(null);
+  const [isFetchingPrice, setIsFetchingPrice] = useState(false);
+
   // Reset to form when asset changes
   useEffect(() => {
     setLimitPrice(asset.price);
     setQuantity(1);
     setStage("form");
     setResult(null);
+    setJustTCGPrice(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [asset.symbol]);
+
+  // Fetch JustTCG price when selling
+  useEffect(() => {
+    if (side === "sell" && !justTCGPrice && !isFetchingPrice) {
+      async function fetchPrice() {
+        setIsFetchingPrice(true);
+        try {
+          const params = new URLSearchParams({
+            name: asset.name,
+            set: asset.set || "",
+            category: asset.category || "pokemon"
+          });
+          const res = await fetch(`/api/justtcg?${params.toString()}`);
+          if (res.ok) {
+            const data = await res.json();
+            setJustTCGPrice(data.price);
+          }
+        } catch (err) {
+          console.error("Failed to fetch JustTCG price", err);
+        } finally {
+          setIsFetchingPrice(false);
+        }
+      }
+      fetchPrice();
+    }
+  }, [side, asset.name, asset.set, asset.category, justTCGPrice, isFetchingPrice]);
 
   const lowestAsk = orderBook?.asks.length ? orderBook.asks[0].price : null;
   const highestBid = orderBook?.bids.length ? orderBook.bids[0].price : null;
@@ -81,16 +111,16 @@ export function TradePanel({ asset, orderBook, onRequestSignIn }: TradePanelProp
         if (estPrice >= bestOpposingPrice) fillLikelihood = "Immediate";
         else {
           const diffPct = (bestOpposingPrice - estPrice) / bestOpposingPrice;
-          if (diffPct < 0.05) fillLikelihood = "High";
-          else if (diffPct <= 0.15) fillLikelihood = "Medium";
+          if (diffPct < 0.02) fillLikelihood = "High";
+          else if (diffPct <= 0.05) fillLikelihood = "Medium";
           else fillLikelihood = "Low";
         }
       } else {
         if (estPrice <= bestOpposingPrice) fillLikelihood = "Immediate";
         else {
           const diffPct = (estPrice - bestOpposingPrice) / bestOpposingPrice;
-          if (diffPct < 0.05) fillLikelihood = "High";
-          else if (diffPct <= 0.15) fillLikelihood = "Medium";
+          if (diffPct < 0.02) fillLikelihood = "High";
+          else if (diffPct <= 0.05) fillLikelihood = "Medium";
           else fillLikelihood = "Low";
         }
       }
@@ -158,6 +188,7 @@ export function TradePanel({ asset, orderBook, onRequestSignIn }: TradePanelProp
       }
 
       setResult(data);
+      refreshPortfolio();
       setStage("confirmed");
       setTimeout(() => {
         setStage("form");
@@ -386,7 +417,7 @@ export function TradePanel({ asset, orderBook, onRequestSignIn }: TradePanelProp
             value={limitPrice}
             onChange={(e) => setLimitPrice(parseFloat(e.target.value) || asset.price)}
             min={0}
-            step={10}
+            step={1}
             className="w-full rounded-[8px] px-3 py-2 text-[12px] tabular-nums font-medium"
             style={{
               background: colors.surfaceRaised,
@@ -395,6 +426,20 @@ export function TradePanel({ asset, orderBook, onRequestSignIn }: TradePanelProp
               outline: "none",
             }}
           />
+          {side === "sell" && (
+            <div className="mt-2 text-[10px] flex items-center justify-between px-1">
+              <span style={{ color: colors.textMuted }}>JustTCG Market Est:</span>
+              <span style={{ color: colors.textSecondary, fontWeight: 600 }}>
+                {isFetchingPrice ? (
+                  "Loading..."
+                ) : justTCGPrice?.mid ? (
+                  formatCurrency(justTCGPrice.mid)
+                ) : (
+                  "N/A"
+                )}
+              </span>
+            </div>
+          )}
         </div>
       )}
 

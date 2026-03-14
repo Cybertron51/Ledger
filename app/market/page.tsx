@@ -84,6 +84,8 @@ function MarketPageContent() {
   const [showSignIn, setShowSignIn] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("simple");
   const [showNonTradable, setShowNonTradable] = useState(false);
+  const [sortOrder, setSortOrder] = useState<"none" | "cheapest" | "expensive">("none");
+  const [categoryFilter, setCategoryFilter] = useState<"all" | "pokemon" | "sports" | "mtg">("all");
   const [dashboardTab, setDashboardTab] = useState<"image" | "chart">("image");
   const [activeMarketImageIndex, setActiveMarketImageIndex] = useState(0);
   const { holdings } = usePortfolio();
@@ -104,8 +106,20 @@ function MarketPageContent() {
   }
 
   const visibleAssets = useMemo(() => {
-    return showNonTradable ? assets : assets.filter(a => a.hasLiquidity);
-  }, [assets, showNonTradable]);
+    let result = showNonTradable ? assets : assets.filter(a => a.hasLiquidity);
+
+    if (categoryFilter !== "all") {
+      result = result.filter(a => a.category === categoryFilter);
+    }
+
+    if (sortOrder === "cheapest") {
+      result = [...result].sort((a, b) => a.price - b.price);
+    } else if (sortOrder === "expensive") {
+      result = [...result].sort((a, b) => b.price - a.price);
+    }
+
+    return result;
+  }, [assets, showNonTradable, categoryFilter, sortOrder]);
 
   const selected = visibleAssets.find((a) => a.symbol === selectedSymbol) ?? visibleAssets[0] ?? null;
   const isUp = selected ? selected.change >= 0 : false;
@@ -417,6 +431,42 @@ function MarketPageContent() {
                 <X size={18} style={{ color: colors.textMuted }} />
               </button>
             )}
+          </div>
+        </div>
+
+        {/* ── Filters ── */}
+        <div className="flex flex-col gap-2 border-b px-4 py-3" style={{ borderColor: colors.borderSubtle }}>
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
+            {(["all", "pokemon", "sports", "mtg"] as const).map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setCategoryFilter(cat)}
+                className="shrink-0 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest rounded-full transition-colors"
+                style={{
+                  background: categoryFilter === cat ? colors.greenMuted : "transparent",
+                  color: categoryFilter === cat ? colors.green : colors.textMuted,
+                  border: `1px solid ${categoryFilter === cat ? colors.green + "40" : colors.borderSubtle}`
+                }}
+              >
+                {cat === "all" ? "All" : cat}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pt-1">
+            {(["none", "cheapest", "expensive"] as const).map((sort) => (
+              <button
+                key={sort}
+                onClick={() => setSortOrder(sort)}
+                className="shrink-0 px-2 min-w-16 py-1 text-[10px] font-bold uppercase tracking-widest rounded transition-colors"
+                style={{
+                  background: sortOrder === sort ? colors.surfaceOverlay : "transparent",
+                  color: sortOrder === sort ? colors.green : colors.textMuted,
+                  border: `1px solid ${sortOrder === sort ? colors.border : "transparent"}`
+                }}
+              >
+                {sort === "none" ? "Avg. Vol" : sort}
+              </button>
+            ))}
           </div>
         </div>
 

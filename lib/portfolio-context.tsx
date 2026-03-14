@@ -38,6 +38,7 @@ interface PortfolioContextValue {
   removeHolding: (id: string) => void;
   updateHolding: (id: string, patch: Partial<VaultHolding>) => void;
   removeOpenOrder: (id: string) => void;
+  refreshPortfolio: () => Promise<void>;
 }
 
 const PortfolioContext = createContext<PortfolioContextValue | null>(null);
@@ -49,39 +50,37 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   const [openOrders, setOpenOrders] = useState<OpenOrder[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    async function fetchHoldings() {
-      if (!isAuthenticated || !user) {
-        setHoldings([]);
-        setOpenOrders([]);
-        setIsLoading(false);
-        return;
-      }
-
-      try {
-        setIsLoading(true);
-        const { getUserVaultHoldings } = await import("@/lib/db/vault");
-        const holdingsData = await getUserVaultHoldings();
-        setHoldings(holdingsData);
-
-        // Fetch open orders natively via API
-        const { apiGet } = await import("@/lib/api");
-        const ordersData = await apiGet<{ orders: OpenOrder[] }>("/api/user/orders");
-        if (ordersData?.orders) {
-          setOpenOrders(ordersData.orders);
-        }
-      } catch (err) {
-        console.error("Failed to load portfolio", err);
-        setHoldings([]);
-        setOpenOrders([]);
-      } finally {
-        setIsLoading(false);
-      }
+  const refreshPortfolio = useCallback(async () => {
+    if (!isAuthenticated || !user) {
+      setHoldings([]);
+      setOpenOrders([]);
+      setIsLoading(false);
+      return;
     }
 
-    fetchHoldings();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isAuthenticated, user?.id]);
+    try {
+      setIsLoading(true);
+      const { getUserVaultHoldings } = await import("@/lib/db/vault");
+      const holdingsData = await getUserVaultHoldings();
+      setHoldings(holdingsData);
+
+      // Fetch open orders natively via API
+      const { apiGet } = await import("@/lib/api");
+      const ordersData = await apiGet<{ orders: OpenOrder[] }>("/api/user/orders");
+      if (ordersData?.orders) {
+        setOpenOrders(ordersData.orders);
+      }
+    } catch (err) {
+      console.error("Failed to load portfolio", err);
+      // Optional: don't clear old data on transient error
+    } finally {
+      setIsLoading(false);
+    }
+  }, [isAuthenticated, user]);
+
+  useEffect(() => {
+    refreshPortfolio();
+  }, [refreshPortfolio]);
 
   const addHolding = useCallback((holding: VaultHolding) => {
     setHoldings((prev) => {
@@ -108,7 +107,7 @@ export function PortfolioProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <PortfolioContext.Provider value={{ holdings, openOrders, addHolding, removeHolding, updateHolding, removeOpenOrder }}>
+    <PortfolioContext.Provider value={{ holdings, openOrders, addHolding, removeHolding, updateHolding, removeOpenOrder, refreshPortfolio }}>
       {children}
     </PortfolioContext.Provider>
   );

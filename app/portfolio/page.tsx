@@ -968,6 +968,69 @@ function PortfolioOverview({ holdings, openOrders, priceMap, assets, activities,
             <PriceChart data={chartData} isUp={isGain} range={range} onRangeChange={setRange} />
           </div>
 
+          {/* ── Live Bids ── */}
+          {openOrders.filter(o => o.type === "buy").length > 0 && (
+            <div className="mb-6 rounded-[10px] border overflow-hidden" style={{ borderColor: colors.border }}>
+              <div
+                className="flex items-center justify-between border-b px-4 py-3"
+                style={{ borderColor: colors.border, background: colors.surfaceOverlay }}
+              >
+                <span className="text-[12px] font-bold tracking-wide flex items-center gap-2" style={{ color: colors.textPrimary }}>
+                  <div className="w-2 h-2 rounded-full" style={{ background: colors.green }} />
+                  Live Bids (Unfilled)
+                </span>
+              </div>
+              <div className="grid grid-cols-4 border-b px-4 py-2" style={{ borderColor: colors.border, background: colors.surface }}>
+                {["Card", "Limit Price", "Qty", ""].map((h) => (
+                  <span key={h} className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
+                    {h}
+                  </span>
+                ))}
+              </div>
+              {openOrders.filter(o => o.type === "buy").map((o) => {
+                const gradeColor = psaGradeColor[o.grade as 8 | 9 | 10] ?? colors.textSecondary;
+                return (
+                  <div
+                    key={o.id}
+                    className="grid grid-cols-4 w-full border-b px-4 py-3 text-left transition-colors hover:bg-[#0f0f0f]"
+                    style={{ borderColor: colors.borderSubtle }}
+                  >
+                    <div className="min-w-0 pr-2">
+                      <p className="truncate text-[12px] font-semibold" style={{ color: colors.textPrimary }}>{o.cardName}</p>
+                      <div>
+                        <span
+                          className="inline-block rounded-[5px] mt-1 px-[6px] py-[2px] text-[10px] font-bold tracking-wide"
+                          style={{ background: `${gradeColor}18`, border: `1px solid ${gradeColor}44`, color: gradeColor }}
+                        >
+                          PSA {o.grade}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="self-center">
+                      <span className="tabular-nums text-[13px] font-bold" style={{ color: colors.green }}>
+                        {formatCurrency(o.price)}
+                      </span>
+                    </div>
+                    <div className="self-center">
+                      <span className="tabular-nums text-[12px] font-semibold" style={{ color: colors.textSecondary }}>
+                        {o.quantity}
+                      </span>
+                    </div>
+                    <div className="self-center text-right">
+                      <button
+                        onClick={() => onCancelOrder(o.id)}
+                        className="text-[11px] font-semibold transition-colors hover:text-red-400 border rounded-[6px] px-3 py-1.5"
+                        style={{ color: colors.red, borderColor: colors.borderSubtle, cursor: "pointer" }}
+                      >
+                        Cancel Bid
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {/* ── Bottom two-column section ── */}
           <div className="grid grid-cols-2 gap-5">
             {/* Category breakdown */}
@@ -1158,20 +1221,20 @@ function PortfolioOverview({ holdings, openOrders, priceMap, assets, activities,
             })}
           </div>
 
-          {/* ── Open Orders ── */}
-          {openOrders.length > 0 && (
+          {/* ── Active Listings (Open Asks) ── */}
+          {openOrders.filter(o => o.type === "sell").length > 0 && (
             <div className="mt-5 rounded-[10px] border overflow-hidden" style={{ borderColor: colors.border }}>
               <div
                 className="grid grid-cols-4 border-b px-4 py-2"
                 style={{ borderColor: colors.border, background: colors.surface }}
               >
-                {["Card", "Order Type", "Price", ""].map((h) => (
+                {["Listed Card", "Order Type", "Ask Price", ""].map((h) => (
                   <span key={h} className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: colors.textMuted }}>
                     {h}
                   </span>
                 ))}
               </div>
-              {openOrders.map((o) => {
+              {openOrders.filter(o => o.type === "sell").map((o) => {
                 const gradeColor = psaGradeColor[o.grade as 8 | 9 | 10] ?? colors.textSecondary;
                 return (
                   <div
@@ -1193,12 +1256,9 @@ function PortfolioOverview({ holdings, openOrders, priceMap, assets, activities,
                     <div className="self-center">
                       <span
                         className="tabular-nums text-[12px] font-semibold uppercase rounded-[6px] px-2 py-1"
-                        style={{
-                          color: o.type === "buy" ? colors.green : colors.red,
-                          background: o.type === "buy" ? colors.greenMuted : "rgba(255, 59, 48, 0.15)"
-                        }}
+                        style={{ color: colors.gold, background: colors.goldMuted }}
                       >
-                        {o.type === "buy" ? "Limit Buy" : "Limit Sell"}
+                        Listing
                       </span>
                     </div>
                     <div className="self-center">

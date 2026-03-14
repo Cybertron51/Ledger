@@ -100,6 +100,7 @@ function TradeModal({
   onClose: () => void;
 }) {
   const { user, updateBalance } = useAuth();
+  const { refreshPortfolio } = usePortfolio();
 
   const [bestBid, setBestBid] = useState(asset.price);
   const [bestAsk, setBestAsk] = useState(asset.price);
@@ -158,6 +159,7 @@ function TradeModal({
         updateBalance(-total);
       }
 
+      refreshPortfolio();
       setStage("confirmed");
       setTimeout(onClose, 3000);
     } catch (err) {
@@ -630,6 +632,9 @@ export function SimpleView({ assets, sparklines, flashMap, onRequestSignIn, show
     allowSell: boolean;
   } | null>(null);
 
+  const [sortOrder, setSortOrder] = useState<"none" | "cheapest" | "expensive">("none");
+  const [categoryFilter, setCategoryFilter] = useState<"all" | "pokemon" | "sports" | "mtg" | "other">("all");
+
   // Match vault holdings to live asset prices
   const { holdings: vaultHoldings } = usePortfolio();
   const holdings = useMemo(() =>
@@ -655,20 +660,36 @@ export function SimpleView({ assets, sparklines, flashMap, onRequestSignIn, show
     // 1. Exclude cards already in the user's portfolio
     const nonPortfolio = assets.filter((a) => !portfolioSymbols.has(a.symbol));
 
+    let result = nonPortfolio;
+
     // 2. If searching, show all matching cards regardless of liquidity
     if (query.trim()) {
       const q = query.toLowerCase();
-      return assets.filter(
+      result = result.filter(
         (a) =>
           a.name.toLowerCase().includes(q) ||
           a.set.toLowerCase().includes(q) ||
           a.symbol.toLowerCase().includes(q)
       );
+    } else {
+      // 3. If not searching, respect the liquidity filter
+      result = showNonTradable ? result : result.filter(a => a.hasLiquidity);
     }
 
-    // 3. If not searching, respect the liquidity filter
-    return showNonTradable ? nonPortfolio : nonPortfolio.filter(a => a.hasLiquidity);
-  }, [assets, query, portfolioSymbols, showNonTradable]);
+    // 4. Apply category filter
+    if (categoryFilter !== "all") {
+      result = result.filter((a) => a.category === categoryFilter);
+    }
+
+    // 5. Apply sort
+    if (sortOrder === "cheapest") {
+      result = [...result].sort((a, b) => a.price - b.price);
+    } else if (sortOrder === "expensive") {
+      result = [...result].sort((a, b) => b.price - a.price);
+    }
+
+    return result;
+  }, [assets, query, portfolioSymbols, showNonTradable, categoryFilter, sortOrder]);
 
   // Keep modal asset price live
   const modalAsset = tradeModal
@@ -721,6 +742,43 @@ export function SimpleView({ assets, sparklines, flashMap, onRequestSignIn, show
               <X size={14} strokeWidth={2} style={{ color: colors.textMuted }} />
             </button>
           )}
+        </div>
+
+        {/* ── Filters & Sorting ── */}
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {/* Category Filter */}
+          <div className="flex bg-[#161616] rounded-[8px] p-1 border" style={{ borderColor: colors.border }}>
+            {(["all", "pokemon", "sports", "mtg"] as const).map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setCategoryFilter(cat)}
+                className="px-3 py-1 text-[11px] font-semibold tracking-wide capitalize transition-colors rounded-[6px]"
+                style={{
+                  background: categoryFilter === cat ? colors.greenMuted : "transparent",
+                  color: categoryFilter === cat ? colors.green : colors.textMuted,
+                }}
+              >
+                {cat === "mtg" ? "MTG" : cat}
+              </button>
+            ))}
+          </div>
+
+          {/* Price Sort */}
+          <div className="flex bg-[#161616] rounded-[8px] p-1 border" style={{ borderColor: colors.border }}>
+            {(["none", "cheapest", "expensive"] as const).map((sort) => (
+              <button
+                key={sort}
+                onClick={() => setSortOrder(sort)}
+                className="px-3 py-1 text-[11px] font-semibold tracking-wide capitalize transition-colors rounded-[6px]"
+                style={{
+                  background: sortOrder === sort ? colors.greenMuted : "transparent",
+                  color: sortOrder === sort ? colors.green : colors.textMuted,
+                }}
+              >
+                {sort === "none" ? "Avg. Vol" : sort}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

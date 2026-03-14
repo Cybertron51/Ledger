@@ -36,7 +36,9 @@ export async function fetchJustTCGPrice(
     try {
         // 1. Search for the card ID
         // Combine name + set into the query for better matching, as strict 'set' parameter often requires IDs.
-        const query = `${name} ${setName}`.trim();
+        // Clean up the name/set by replacing dashes with spaces, which JustTCG handles better
+        const cleanName = name.replace(/-/g, " ");
+        let query = `${cleanName} ${setName}`.trim();
         const searchParams = new URLSearchParams({
             q: query
         });

@@ -22,6 +22,35 @@ export default function SignUpPage() {
     const [successMsg, setSuccessMsg] = useState("");
     const [showSignIn, setShowSignIn] = useState(false);
 
+    // Waitlist States
+    const [waitlistEmail, setWaitlistEmail] = useState("");
+    const [waitlistState, setWaitlistState] = useState<"idle" | "loading" | "success" | "error">("idle");
+    const [waitlistRes, setWaitlistRes] = useState("");
+
+    const handleJoinWaitlist = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!waitlistEmail) return;
+        setWaitlistState("loading");
+        try {
+            const res = await fetch("/api/waitlist", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ email: waitlistEmail }),
+            });
+            if (!res.ok) throw new Error();
+            setWaitlistState("success");
+            setWaitlistRes("Thanks! We'll be in touch soon.");
+            setWaitlistEmail("");
+        } catch {
+            setWaitlistState("error");
+            setWaitlistRes("Failed to join waitlist.");
+            setTimeout(() => {
+                setWaitlistState("idle");
+                setWaitlistRes("");
+            }, 4000);
+        }
+    };
+
     // If user is already logged in, redirect them to onboarding
     // (Onboarding will redirect them to portfolio if fully onboarded)
     useEffect(() => {
@@ -252,6 +281,49 @@ export default function SignUpPage() {
                                     </svg>
                                     <span>Continue with Google</span>
                                 </button>
+                            </div>
+                        )}
+
+                        {/* STEP 1.5: Waitlist Section (Only shown if referral is not unlocked yet) */}
+                        {!referralUnlocked && (
+                            <div className="mt-8 pt-8 border-t border-zinc-900 animate-in fade-in duration-500">
+                                <p className="text-sm text-zinc-500 uppercase tracking-widest font-bold mb-4">No Code? Join the Waitlist</p>
+
+                                {waitlistState === "success" ? (
+                                    <div
+                                        className="rounded-xl p-4 text-[13px] font-medium text-center"
+                                        style={{
+                                            background: "rgba(34, 197, 94, 0.1)",
+                                            color: colors.green,
+                                            border: `1px solid ${colors.green}44`,
+                                        }}
+                                    >
+                                        {waitlistRes}
+                                    </div>
+                                ) : (
+                                    <form onSubmit={handleJoinWaitlist} className="flex space-x-2">
+                                        <input
+                                            type="email"
+                                            required
+                                            placeholder="Enter your email address"
+                                            value={waitlistEmail}
+                                            onChange={(e) => setWaitlistEmail(e.target.value)}
+                                            className="flex-1 bg-zinc-900 border border-zinc-800 rounded-xl py-4 px-4 text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-green-500/50 transition-all text-sm"
+                                            disabled={waitlistState === "loading"}
+                                        />
+                                        <button
+                                            type="submit"
+                                            disabled={waitlistState === "loading" || !waitlistEmail}
+                                            className="flex items-center justify-center px-6 rounded-xl font-bold transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50"
+                                            style={{ background: colors.surfaceRaised, color: colors.textPrimary, border: `1px solid ${colors.border}` }}
+                                        >
+                                            {waitlistState === "loading" ? <Loader2 size={16} className="animate-spin text-zinc-400" /> : "Join"}
+                                        </button>
+                                    </form>
+                                )}
+                                {waitlistState === "error" && (
+                                    <p className="mt-2 text-xs text-red-400">{waitlistRes}</p>
+                                )}
                             </div>
                         )}
                     </div>
