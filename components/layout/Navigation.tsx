@@ -255,8 +255,7 @@ export function Navigation() {
         }}
       >
         {/* ── Wordmark ─────────────────────────────── */}
-        <Link href="/market" className="flex items-center gap-2 no-underline" aria-label="tash. home">
-          <img src="/icon.svg" alt="tash." width={28} height={28} className="rounded-[6px]" />
+        <Link href="/market" className="flex items-center no-underline" aria-label="tash. home">
           <span
             className="text-[18px] font-bold tracking-tight"
             style={{ color: colors.textPrimary, letterSpacing: "-0.03em" }}

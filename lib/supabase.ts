@@ -29,18 +29,18 @@ const cookieStorage = {
     if (!isBrowser) return null;
     const match = document.cookie.match(new RegExp('(^| )' + key + '=([^;]+)'));
     if (match && match[2] === "chunked") {
-      let value = "";
+      let encoded = "";
       let i = 0;
       while (true) {
         const chunkMatch = document.cookie.match(new RegExp('(^| )' + key + '\\.' + i + '=([^;]+)'));
         if (chunkMatch) {
-          value += decodeURIComponent(chunkMatch[2]);
+          encoded += chunkMatch[2];
           i++;
         } else {
           break;
         }
       }
-      return value || null;
+      return encoded ? decodeURIComponent(encoded) : null;
     } else if (match) {
       return decodeURIComponent(match[2]);
     }
