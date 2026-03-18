@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { apiGet, apiPatch, apiPost, apiDelete } from "@/lib/api";
 import { formatCurrency } from "@/lib/utils";
 import { colors, layout } from "@/lib/theme";
-import { Loader2, Check, Users, Package, ChevronUp, ChevronDown, X, Ticket, Plus, Trash2, ArrowLeftRight, QrCode, Calendar } from "lucide-react";
+import { Loader2, Check, Users, Package, ChevronUp, ChevronDown, X, Ticket, Plus, Trash2, ArrowLeftRight, QrCode, Calendar, Receipt, Download, Search } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { SignInModal } from "@/components/auth/SignInModal";
 
@@ -19,7 +19,7 @@ export default function AdminPage() {
     const [usersList, setUsersList] = useState<any[]>([]);
     const [isLoading, setIsLoading] = useState(true);
     const [showSignIn, setShowSignIn] = useState(false);
-    const [activeTab, setActiveTab] = useState<"intake" | "returns" | "users" | "referrals" | "qrcodes" | "dropoff_events">("intake");
+    const [activeTab, setActiveTab] = useState<"intake" | "returns" | "users" | "referrals" | "qrcodes" | "dropoff_events" | "transactions">("intake");
     const [referralCodes, setReferralCodes] = useState<any[]>([]);
     const [newCode, setNewCode] = useState({ code: "", description: "" });
     const [isCreatingCode, setIsCreatingCode] = useState(false);
@@ -31,6 +31,14 @@ export default function AdminPage() {
     const [isCreatingEvent, setIsCreatingEvent] = useState(false);
     const [editingEventId, setEditingEventId] = useState<string | null>(null);
     const [editEvent, setEditEvent] = useState({ address: "", date: "", time_start: "", time_end: "", description: "" });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const [transactionsList, setTransactionsList] = useState<any[]>([]);
+    const [txTotal, setTxTotal] = useState(0);
+    const [txHasMore, setTxHasMore] = useState(false);
+    const [txLoadingMore, setTxLoadingMore] = useState(false);
+    const [txSearch, setTxSearch] = useState("");
+    const [txSortConfig, setTxSortConfig] = useState<{ key: string; direction: "asc" | "desc" }>({ key: "timestamp", direction: "desc" });
+    const [isExportingCsv, setIsExportingCsv] = useState(false);
 
     const sortedUsers = [...usersList].sort((a, b) => {
         if (!sortConfig) return 0;
@@ -47,6 +55,88 @@ export default function AdminPage() {
             direction = "desc";
         }
         setSortConfig({ key, direction });
+    };
+
+    const handleTxSort = (key: string) => {
+        setTxSortConfig((prev) => ({
+            key,
+            direction: prev.key === key && prev.direction === "asc" ? "desc" : "asc",
+        }));
+    };
+
+    const filteredTransactions = transactionsList
+        .filter((tx) => {
+            if (!txSearch) return true;
+            const q = txSearch.toLowerCase();
+            return (
+                tx.symbol?.toLowerCase().includes(q) ||
+                (tx.buyer || "").toLowerCase().includes(q) ||
+                (tx.seller || "").toLowerCase().includes(q) ||
+                (tx.buyer_email || "").toLowerCase().includes(q) ||
+                (tx.seller_email || "").toLowerCase().includes(q)
+            );
+        })
+        .sort((a, b) => {
+            const key = txSortConfig.key;
+            let valA = a[key];
+            let valB = b[key];
+            if (key === "timestamp") {
+                valA = new Date(valA).getTime();
+                valB = new Date(valB).getTime();
+            }
+            if (valA == null) return 1;
+            if (valB == null) return -1;
+            if (valA < valB) return txSortConfig.direction === "asc" ? -1 : 1;
+            if (valA > valB) return txSortConfig.direction === "asc" ? 1 : -1;
+            return 0;
+        });
+
+    const loadMoreTransactions = async () => {
+        setTxLoadingMore(true);
+        try {
+            const res = await apiGet<{ data: any[]; total: number; hasMore: boolean }>(
+                `/api/admin/transactions?offset=${transactionsList.length}`
+            );
+            setTransactionsList((prev) => [...prev, ...(res.data || [])]);
+            setTxTotal(res.total ?? 0);
+            setTxHasMore(res.hasMore ?? false);
+        } catch (err: any) {
+            alert(`Failed to load more: ${err.message}`);
+        } finally {
+            setTxLoadingMore(false);
+        }
+    };
+
+    const exportTransactionsCsv = async () => {
+        setIsExportingCsv(true);
+        try {
+            const res = await apiGet<{ data: any[] }>(`/api/admin/transactions?all=true`);
+            const rows = res.data || [];
+            const headers = ["Date", "Card (Symbol)", "Buyer", "Buyer Email", "Seller", "Seller Email", "Price"];
+            const csvRows = rows.map((tx) => [
+                new Date(tx.timestamp).toLocaleString(),
+                tx.symbol,
+                tx.buyer || "",
+                tx.buyer_email || "",
+                tx.seller || "",
+                tx.seller_email || "",
+                tx.price.toFixed(2),
+            ]);
+            const content = [headers, ...csvRows]
+                .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+                .join("\n");
+            const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = `ledger-transactions-${new Date().toISOString().slice(0, 10)}.csv`;
+            link.click();
+            URL.revokeObjectURL(url);
+        } catch (err: any) {
+            alert(`Export failed: ${err.message}`);
+        } finally {
+            setIsExportingCsv(false);
+        }
     };
     useEffect(() => {
         async function fetchData() {
@@ -70,6 +160,11 @@ export default function AdminPage() {
                 } else if (activeTab === "dropoff_events") {
                     const data = await apiGet<any[]>(`/api/admin/drop-off-events?t=${Date.now()}`);
                     setDropOffEvents(data || []);
+                } else if (activeTab === "transactions") {
+                    const res = await apiGet<{ data: any[]; total: number; hasMore: boolean }>(`/api/admin/transactions?t=${Date.now()}`);
+                    setTransactionsList(res.data || []);
+                    setTxTotal(res.total ?? 0);
+                    setTxHasMore(res.hasMore ?? false);
                 }
             } catch (err: any) {
                 // If it's a 403, fail silently for non-admins so we don't spam alerts.
@@ -338,6 +433,26 @@ export default function AdminPage() {
                         }}
                     >
                         <Calendar size={16} /> Drop-Off Events
+                    </button>
+                    <button
+                        onClick={() => setActiveTab("transactions")}
+                        style={{
+                            background: "transparent",
+                            border: "none",
+                            padding: "8px 16px",
+                            cursor: "pointer",
+                            fontSize: 14,
+                            fontWeight: 600,
+                            color: activeTab === "transactions" ? colors.green : colors.textSecondary,
+                            borderBottom: activeTab === "transactions" ? `2px solid ${colors.green}` : "2px solid transparent",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 8,
+                            transform: "translateY(1px)",
+                            transition: "all 0.15s",
+                        }}
+                    >
+                        <Receipt size={16} /> Transactions
                     </button>
                 </div>
 
@@ -1077,6 +1192,152 @@ export default function AdminPage() {
                                         )}
                                     </div>
                                 ))}
+                            </div>
+                        )}
+                    </>
+                ) : activeTab === "transactions" ? (
+                    <>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                            <p style={{ fontSize: 13, color: colors.textSecondary }}>
+                                All settled trades across every user account.
+                            </p>
+                            <button
+                                onClick={exportTransactionsCsv}
+                                disabled={isExportingCsv || txTotal === 0}
+                                style={{
+                                    display: "flex", alignItems: "center", gap: 6,
+                                    background: colors.green, color: colors.background,
+                                    border: "none", borderRadius: 8, padding: "8px 14px",
+                                    fontSize: 13, fontWeight: 700, cursor: isExportingCsv ? "wait" : "pointer",
+                                    opacity: (isExportingCsv || txTotal === 0) ? 0.5 : 1,
+                                    flexShrink: 0,
+                                }}
+                            >
+                                {isExportingCsv
+                                    ? <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
+                                    : <Download size={14} />}
+                                {isExportingCsv ? "Exporting…" : "Export All CSV"}
+                            </button>
+                        </div>
+
+                        {/* Summary stats */}
+                        {txTotal > 0 && (
+                            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12, marginBottom: 20 }}>
+                                <div style={{ background: colors.surfaceOverlay, border: `1px solid ${colors.border}`, borderRadius: 10, padding: "12px 16px" }}>
+                                    <p style={{ fontSize: 11, color: colors.textMuted, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 600 }}>Total Trades</p>
+                                    <p style={{ fontSize: 18, fontWeight: 800, color: colors.textPrimary }}>{txTotal.toLocaleString()}</p>
+                                </div>
+                                <div style={{ background: colors.surfaceOverlay, border: `1px solid ${colors.border}`, borderRadius: 10, padding: "12px 16px" }}>
+                                    <p style={{ fontSize: 11, color: colors.textMuted, marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.5px", fontWeight: 600 }}>Loaded</p>
+                                    <p style={{ fontSize: 18, fontWeight: 800, color: colors.textPrimary }}>{transactionsList.length.toLocaleString()}</p>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Search */}
+                        <div style={{ position: "relative", marginBottom: 16 }}>
+                            <Search size={14} style={{ position: "absolute", left: 10, top: "50%", transform: "translateY(-50%)", color: colors.textMuted, pointerEvents: "none" }} />
+                            <input
+                                placeholder="Search by card, buyer, or seller…"
+                                value={txSearch}
+                                onChange={(e) => setTxSearch(e.target.value)}
+                                style={{
+                                    width: "100%", paddingLeft: 32, padding: "9px 12px 9px 32px",
+                                    background: colors.surfaceOverlay, border: `1px solid ${colors.border}`,
+                                    borderRadius: 8, fontSize: 13, color: colors.textPrimary,
+                                    boxSizing: "border-box",
+                                }}
+                            />
+                        </div>
+
+                        {filteredTransactions.length === 0 ? (
+                            <div style={{ padding: 48, textAlign: "center", background: colors.surfaceOverlay, border: `1px dashed ${colors.border}`, borderRadius: 16 }}>
+                                <p style={{ fontSize: 14, color: colors.textMuted, fontWeight: 500 }}>
+                                    {transactionsList.length === 0 ? "No transactions found." : "No transactions match your search."}
+                                </p>
+                            </div>
+                        ) : (
+                            <div style={{ background: colors.surfaceOverlay, border: `1px solid ${colors.border}`, borderRadius: 12, overflow: "hidden" }}>
+                                <div style={{ overflowX: "auto" }}>
+                                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 560 }}>
+                                        <thead style={{ background: colors.surface, borderBottom: `1px solid ${colors.border}` }}>
+                                            <tr>
+                                                {[
+                                                    { key: "timestamp", label: "Date", align: "left" },
+                                                    { key: "symbol", label: "Card", align: "left" },
+                                                    { key: "buyer", label: "Buyer", align: "left" },
+                                                    { key: "seller", label: "Seller", align: "left" },
+                                                    { key: "price", label: "Price", align: "right" },
+                                                ].map(({ key, label, align }) => (
+                                                    <th
+                                                        key={key}
+                                                        onClick={() => handleTxSort(key)}
+                                                        style={{
+                                                            padding: "12px 14px", textAlign: align as "left" | "right",
+                                                            fontSize: 12, fontWeight: 600, color: colors.textSecondary,
+                                                            cursor: "pointer", userSelect: "none", whiteSpace: "nowrap",
+                                                        }}
+                                                    >
+                                                        <div style={{ display: "flex", alignItems: "center", gap: 4, justifyContent: align === "right" ? "flex-end" : "flex-start" }}>
+                                                            {label}
+                                                            {txSortConfig.key === key && (txSortConfig.direction === "asc" ? <ChevronUp size={13} /> : <ChevronDown size={13} />)}
+                                                        </div>
+                                                    </th>
+                                                ))}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {filteredTransactions.map((tx, i) => (
+                                                <tr
+                                                    key={tx.id}
+                                                    style={{ borderBottom: i < filteredTransactions.length - 1 ? `1px solid ${colors.borderSubtle}` : "none", transition: "background 0.1s" }}
+                                                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.02)")}
+                                                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                                                >
+                                                    <td style={{ padding: "11px 14px", fontSize: 12, color: colors.textMuted, whiteSpace: "nowrap" }}>
+                                                        {new Date(tx.timestamp).toLocaleString()}
+                                                    </td>
+                                                    <td style={{ padding: "11px 14px", fontSize: 13, color: colors.textPrimary, fontWeight: 600 }}>{tx.symbol}</td>
+                                                    <td style={{ padding: "11px 14px", fontSize: 12, color: colors.textSecondary, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                                        {tx.buyer || <span style={{ color: colors.textMuted }}>—</span>}
+                                                    </td>
+                                                    <td style={{ padding: "11px 14px", fontSize: 12, color: colors.textSecondary, maxWidth: 180, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                                        {tx.seller || <span style={{ color: colors.textMuted }}>—</span>}
+                                                    </td>
+                                                    <td style={{ padding: "11px 14px", fontSize: 13, fontWeight: 700, color: colors.textPrimary, textAlign: "right", whiteSpace: "nowrap" }}>
+                                                        {formatCurrency(tx.price)}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                </div>
+
+                                {/* Footer: record count + load more */}
+                                <div style={{ padding: "12px 16px", borderTop: `1px solid ${colors.borderSubtle}`, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                                    <span style={{ fontSize: 12, color: colors.textMuted }}>
+                                        {txSearch
+                                            ? `${filteredTransactions.length.toLocaleString()} match${filteredTransactions.length !== 1 ? "es" : ""} in ${transactionsList.length.toLocaleString()} loaded`
+                                            : `${transactionsList.length.toLocaleString()} of ${txTotal.toLocaleString()} trades loaded`}
+                                    </span>
+                                    {txHasMore && !txSearch && (
+                                        <button
+                                            onClick={loadMoreTransactions}
+                                            disabled={txLoadingMore}
+                                            style={{
+                                                display: "flex", alignItems: "center", gap: 6,
+                                                background: "transparent", color: colors.green,
+                                                border: `1px solid ${colors.green}44`, borderRadius: 7,
+                                                padding: "6px 14px", fontSize: 12, fontWeight: 700,
+                                                cursor: txLoadingMore ? "wait" : "pointer",
+                                                opacity: txLoadingMore ? 0.6 : 1,
+                                            }}
+                                        >
+                                            {txLoadingMore && <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} />}
+                                            {txLoadingMore ? "Loading…" : `Load 100 more`}
+                                        </button>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </>
