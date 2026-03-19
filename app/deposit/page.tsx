@@ -651,7 +651,7 @@ function SuccessStage({
       </div>
 
       <Link
-        href="/"
+        href="/market"
         style={{
           display: "block",
           width: "100%",
