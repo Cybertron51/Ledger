@@ -146,19 +146,24 @@ async function handleCashWithdrawal(userId: string, body: any) {
 // Holding Withdrawal (Physical Card Shipback)
 // ─────────────────────────────────────────────────────────
 
+const SHIPPING_FEE_USD = 7.99;
+
 async function handleHoldingWithdrawal(userId: string, body: any) {
-  const { holdingId, currentValueUsd, shippingAddress } = body;
+  const { holdingId, currentValueUsd, collectionMethod, shippingAddress } = body;
 
   if (!holdingId || !currentValueUsd) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
   }
 
-  if (!shippingAddress || typeof shippingAddress !== "string" || !shippingAddress.trim()) {
-    return NextResponse.json({ error: "Shipping address is required" }, { status: 400 });
+  const method: "ship" | "inperson" = collectionMethod === "inperson" ? "inperson" : "ship";
+
+  if (method === "ship" && (!shippingAddress || typeof shippingAddress !== "string" || !shippingAddress.trim())) {
+    return NextResponse.json({ error: "Shipping address is required for delivery" }, { status: 400 });
   }
 
-  // 1. Calculate 3.5% withdrawal fee
-  const fee = currentValueUsd * 0.035;
+  // 1. Calculate 10% withdrawal fee + $7.99 shipping if applicable
+  const withdrawalFee = currentValueUsd * 0.10;
+  const fee = method === "ship" ? withdrawalFee + SHIPPING_FEE_USD : withdrawalFee;
 
   // 2. Fetch user profile to check balance covers fee
   const { data: profile, error: profileErr } = await supabaseAdmin!
@@ -175,10 +180,15 @@ async function handleHoldingWithdrawal(userId: string, body: any) {
     return NextResponse.json({ error: "Insufficient funds to cover withdrawal fee" }, { status: 400 });
   }
 
-  // 3. Update holding status to 'returning' and save shipping address
+  // 3. Update holding status to 'returning' and save shipping address (if applicable)
+  const updatePayload: Record<string, unknown> = { status: "returning" };
+  if (method === "ship" && shippingAddress) {
+    updatePayload.shipping_address = shippingAddress.trim();
+  }
+
   const { error: updateErr, data: updatedData } = await supabaseAdmin!
     .from("vault_holdings")
-    .update({ status: "returning", shipping_address: shippingAddress.trim() })
+    .update(updatePayload)
     .eq("id", holdingId)
     .eq("user_id", userId)
     .eq("status", "tradable")

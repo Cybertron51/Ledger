@@ -5,52 +5,39 @@ export const dynamic = "force-dynamic";
 
 const ADMIN_EMAIL = "derekyp9@gmail.com";
 
-/**
- * GET /api/admin/qr-codes
- * Admin-only: fetch all QR codes across all users with holdings and user info.
- */
-export async function GET(req: NextRequest) {
-    const auth = await verifyAuth(req);
-    if (!auth || auth.email !== ADMIN_EMAIL) return unauthorized();
-    if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
-
-    const { data, error } = await supabaseAdmin
-        .from("qr_codes")
-        .select(`
+const QR_SELECT = `
+    id,
+    name,
+    type,
+    status,
+    created_at,
+    updated_at,
+    profiles (
+        name,
+        email,
+        username
+    ),
+    qr_code_holdings (
+        id,
+        holding_id,
+        vault_holdings (
             id,
+            symbol,
             name,
-            type,
+            set_name,
+            year,
+            psa_grade,
+            cert_number,
+            acquisition_price,
             status,
-            created_at,
-            updated_at,
-            profiles (
-                name,
-                email,
-                username
-            ),
-            qr_code_holdings (
-                id,
-                holding_id,
-                vault_holdings (
-                    id,
-                    symbol,
-                    name,
-                    set_name,
-                    year,
-                    psa_grade,
-                    cert_number,
-                    acquisition_price,
-                    status,
-                    image_url,
-                    raw_image_url
-                )
-            )
-        `)
-        .order("created_at", { ascending: false });
+            image_url,
+            raw_image_url
+        )
+    )
+`;
 
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-
-    const mapped = (data || []).map((qr: any) => ({
+function mapQrCode(qr: any) {
+    return {
         ...qr,
         user: qr.profiles,
         holdings: (qr.qr_code_holdings || []).map((qch: any) => ({
@@ -61,15 +48,46 @@ export async function GET(req: NextRequest) {
         })),
         profiles: undefined,
         qr_code_holdings: undefined,
-    }));
+    };
+}
 
-    return NextResponse.json(mapped);
+/**
+ * GET /api/admin/qr-codes
+ * Admin-only: fetch all QR codes, or a single one via ?id=<uuid>.
+ */
+export async function GET(req: NextRequest) {
+    const auth = await verifyAuth(req);
+    if (!auth || auth.email !== ADMIN_EMAIL) return unauthorized();
+    if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
+
+    const id = req.nextUrl.searchParams.get("id");
+
+    if (id) {
+        const { data, error } = await supabaseAdmin
+            .from("qr_codes")
+            .select(QR_SELECT)
+            .eq("id", id)
+            .single();
+
+        if (error) return NextResponse.json({ error: error.message }, { status: error.code === "PGRST116" ? 404 : 500 });
+        return NextResponse.json(mapQrCode(data));
+    }
+
+    const { data, error } = await supabaseAdmin
+        .from("qr_codes")
+        .select(QR_SELECT)
+        .order("created_at", { ascending: false });
+
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json((data || []).map(mapQrCode));
 }
 
 /**
  * PATCH /api/admin/qr-codes
- * Admin-only: approve/disapprove individual holdings within a QR code group.
- * Body: { holdingId, action: "approve" | "disapprove" }
+ * Admin-only: approve/disapprove individual holdings, or mark a batch as received.
+ *
+ * Approve/Disapprove: { holdingId, action: "approve" | "disapprove" }
+ * Receive batch:      { qrCodeId, action: "receive" }
  */
 export async function PATCH(req: NextRequest) {
     const auth = await verifyAuth(req);
@@ -77,11 +95,26 @@ export async function PATCH(req: NextRequest) {
     if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
 
     const body = await req.json();
-    const { holdingId, action = "approve" } = body;
+    const { action } = body;
 
-    if (!holdingId) {
-        return NextResponse.json({ error: "holdingId is required" }, { status: 400 });
+    if (action === "receive") {
+        const { qrCodeId } = body;
+        if (!qrCodeId) return NextResponse.json({ error: "qrCodeId is required" }, { status: 400 });
+
+        const { data, error } = await supabaseAdmin
+            .from("qr_codes")
+            .update({ status: "received" })
+            .eq("id", qrCodeId)
+            .in("status", ["pending", "submitted"])
+            .select()
+            .single();
+
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+        return NextResponse.json(data);
     }
+
+    const { holdingId } = body;
+    if (!holdingId) return NextResponse.json({ error: "holdingId is required" }, { status: 400 });
 
     const nextStatus = action === "disapprove" ? "disapproved" : "tradable";
 

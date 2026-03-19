@@ -177,7 +177,7 @@ export default function AccountQrCodesPage() {
                                     >
                                         {/* QR preview */}
                                         <div style={{ background: "#fff", padding: 6, borderRadius: 6, flexShrink: 0 }}>
-                                            <QRCodeSVG value={qr.id} size={56} level="H" />
+                                            <QRCodeSVG value={`${window.location.origin}/admin/check-in?id=${qr.id}`} size={56} level="H" />
                                         </div>
 
                                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -252,7 +252,7 @@ export default function AccountQrCodesPage() {
                                             {/* Large QR code */}
                                             <div style={{ textAlign: "center", marginBottom: 20 }}>
                                                 <div style={{ background: "#fff", padding: 16, borderRadius: 10, display: "inline-block" }}>
-                                                    <QRCodeSVG value={qr.id} size={180} level="H" />
+                                                    <QRCodeSVG value={`${window.location.origin}/admin/check-in?id=${qr.id}`} size={180} level="H" />
                                                 </div>
                                                 <p style={{ color: colors.textMuted, fontSize: 10, marginTop: 8, fontFamily: "monospace" }}>{qr.id}</p>
                                             </div>

@@ -129,7 +129,7 @@ export default function DropOffPage() {
                         Present this QR code when dropping off your cards. Your {selectedIds.size} card{selectedIds.size !== 1 ? "s" : ""} have been marked as submitted.
                     </p>
                     <div style={{ background: "#FFFFFF", padding: 20, borderRadius: 12, display: "inline-block", marginBottom: 20 }}>
-                        <QRCodeSVG value={createdQrId} size={200} level="H" />
+                        <QRCodeSVG value={`${window.location.origin}/admin/check-in?id=${createdQrId}`} size={200} level="H" />
                     </div>
                     <p style={{ color: colors.textMuted, fontSize: 11, marginBottom: 24 }}>{qrName}</p>
                     <div style={{ display: "flex", gap: 10 }}>

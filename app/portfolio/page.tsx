@@ -242,7 +242,7 @@ export default function PortfolioPage() {
     setModalState({ type: "submit", holdingId: id });
   }
 
-  async function confirmWithdrawal(shippingAddress: string) {
+  async function confirmWithdrawal(shippingAddress: string, collectionMethod: "ship" | "inperson") {
     if (!modalState || modalState.type !== "withdraw") return;
     const holding = holdings.find((h) => h.id === modalState.holdingId);
     if (!holding) return;
@@ -258,7 +258,8 @@ export default function PortfolioPage() {
           type: "holding",
           holdingId: holding.id,
           currentValueUsd: priceMap[holding.symbol] ?? 0,
-          shippingAddress,
+          collectionMethod,
+          shippingAddress: collectionMethod === "ship" ? shippingAddress : undefined,
         }),
       });
 
@@ -278,7 +279,7 @@ export default function PortfolioPage() {
         amount: priceMap[holding.symbol] ?? 0,
         timestamp: new Date(),
       }]);
-      updateBalance(-data.feeCharged); // Optimisticaly deduct fee
+      updateBalance(-data.feeCharged);
     } catch (err) {
       console.error("Error withdrawing:", err);
       alert("Network error processing withdrawal.");
@@ -758,7 +759,7 @@ export default function PortfolioPage() {
                 holding={modalHolding}
                 currentValue={modalValue}
                 onCancel={() => setModalState(null)}
-                onConfirm={(address: string) => confirmWithdrawal(address)}
+                onConfirm={(address: string, method: "ship" | "inperson") => confirmWithdrawal(address, method)}
               />
             )}
           </div>
@@ -1604,29 +1605,37 @@ function ListModal({ holding, price, marketPrice, onPriceChange, onCancel, onCon
 // Request Withdrawal Modal
 // ─────────────────────────────────────────────────────────
 
+const SHIPPING_FEE = 7.99;
+
 interface WithdrawModalProps {
   holding: VaultHolding;
   currentValue: number;
   onCancel: () => void;
-  onConfirm: (address: string) => void;
+  onConfirm: (address: string, method: "ship" | "inperson") => void;
 }
 
 function WithdrawModal({ holding, currentValue, onCancel, onConfirm }: WithdrawModalProps) {
-  const fee = currentValue * 0.035;
-  const net = currentValue * 0.965;
+  const withdrawalFee = currentValue * 0.10;
+  const [collectionMethod, setCollectionMethod] = useState<"ship" | "inperson">("ship");
   const [street, setStreet] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("");
   const [zip, setZip] = useState("");
-  const canSubmit = street.trim() && city.trim() && state.trim() && zip.trim();
+  const canSubmitShip = street.trim() && city.trim() && state.trim() && zip.trim();
   const inputStyle: React.CSSProperties = { width: "100%", background: colors.surfaceOverlay, border: `1px solid ${colors.border}`, borderRadius: 8, color: colors.textPrimary, fontSize: 13, padding: "9px 12px", outline: "none", boxSizing: "border-box" };
   const labelStyle: React.CSSProperties = { display: "block", color: colors.textMuted, fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 };
 
   function handleConfirm() {
-    if (!canSubmit) return;
-    const fullAddress = `${street.trim()}, ${city.trim()}, ${state.trim()} ${zip.trim()}`;
-    onConfirm(fullAddress);
+    if (collectionMethod === "ship") {
+      if (!canSubmitShip) return;
+      const fullAddress = `${street.trim()}, ${city.trim()}, ${state.trim()} ${zip.trim()}`;
+      onConfirm(fullAddress, "ship");
+    } else {
+      onConfirm("", "inperson");
+    }
   }
+
+  const totalFee = collectionMethod === "ship" ? withdrawalFee + SHIPPING_FEE : withdrawalFee;
 
   return (
     <>
@@ -1635,40 +1644,121 @@ function WithdrawModal({ holding, currentValue, onCancel, onConfirm }: WithdrawM
         <button onClick={onCancel} style={{ background: "none", border: "none", cursor: "pointer", color: colors.textMuted, padding: 4, display: "flex", alignItems: "center" }}><X size={16} /></button>
       </div>
       <p style={{ color: colors.textSecondary, fontSize: 12, marginBottom: 20 }}>{holding.name} · PSA {holding.grade}</p>
+
+      {/* Fee Breakdown */}
       <div style={{ background: colors.surfaceOverlay, border: `1px solid ${colors.border}`, borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
           <span style={{ color: colors.textSecondary, fontSize: 13 }}>Card Value</span>
           <span style={{ color: colors.textPrimary, fontSize: 13, fontWeight: 600 }}>{formatCurrency(currentValue)}</span>
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: collectionMethod === "ship" ? 8 : 0 }}>
           <span style={{ color: colors.textSecondary, fontSize: 13 }}>Withdrawal Fee</span>
-          <span style={{ color: colors.gold, fontSize: 13, fontWeight: 700 }}>−{formatCurrency(fee)} <span style={{ fontSize: 11, fontWeight: 500 }}>(3.5%)</span></span>
+          <span style={{ color: colors.gold, fontSize: 13, fontWeight: 700 }}>−{formatCurrency(withdrawalFee)} <span style={{ fontSize: 11, fontWeight: 500 }}>(10%)</span></span>
         </div>
-        <div style={{ borderTop: `1px solid ${colors.border}`, paddingTop: 12, display: "flex", justifyContent: "space-between" }}>
-          <span style={{ color: colors.textPrimary, fontSize: 13, fontWeight: 600 }}>You Receive</span>
-          <span style={{ color: colors.textPrimary, fontSize: 14, fontWeight: 700 }}>{formatCurrency(net)}</span>
-        </div>
-      </div>
-
-      {/* Shipping Address */}
-      <div style={{ marginBottom: 16 }}>
-        <label style={labelStyle}>Shipping Address</label>
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <input type="text" placeholder="Street Address" value={street} onChange={(e) => setStreet(e.target.value)} style={inputStyle} />
-          <div style={{ display: "flex", gap: 10 }}>
-            <input type="text" placeholder="City" value={city} onChange={(e) => setCity(e.target.value)} style={{ ...inputStyle, flex: 2 }} />
-            <input type="text" placeholder="State" value={state} onChange={(e) => setState(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
-            <input type="text" placeholder="ZIP" value={zip} onChange={(e) => setZip(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+        {collectionMethod === "ship" && (
+          <div style={{ display: "flex", justifyContent: "space-between" }}>
+            <span style={{ color: colors.textSecondary, fontSize: 13 }}>Shipping</span>
+            <span style={{ color: colors.gold, fontSize: 13, fontWeight: 700 }}>−{formatCurrency(SHIPPING_FEE)}</span>
           </div>
+        )}
+        <div style={{ borderTop: `1px solid ${colors.border}`, marginTop: 12, paddingTop: 12, display: "flex", justifyContent: "space-between" }}>
+          <span style={{ color: colors.textSecondary, fontSize: 13 }}>Total Fees</span>
+          <span style={{ color: colors.gold, fontSize: 14, fontWeight: 700 }}>−{formatCurrency(totalFee)}</span>
         </div>
       </div>
 
-      <div style={{ background: colors.goldMuted, border: `1px solid ${colors.gold}44`, borderRadius: 8, padding: "10px 14px", marginBottom: 20 }}>
-        <p style={{ color: colors.gold, fontSize: 12, lineHeight: 1.5 }}>⚠ Physical delivery takes 7–14 business days</p>
+      {/* Collection Method */}
+      <div style={{ marginBottom: 16 }}>
+        <label style={labelStyle}>Collection Method</label>
+        <div style={{ display: "flex", gap: 8 }}>
+          {(["ship", "inperson"] as const).map((method) => {
+            const active = collectionMethod === method;
+            return (
+              <button
+                key={method}
+                onClick={() => setCollectionMethod(method)}
+                style={{
+                  flex: 1,
+                  padding: "10px 12px",
+                  borderRadius: 8,
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                  border: `1px solid ${active ? colors.gold : colors.border}`,
+                  background: active ? colors.goldMuted : colors.surfaceOverlay,
+                  color: active ? colors.gold : colors.textSecondary,
+                  transition: "all 0.15s",
+                }}
+              >
+                {method === "ship" ? "📦 Ship to me" : "🤝 In-person"}
+              </button>
+            );
+          })}
+        </div>
       </div>
+
+      {/* Ship: address form */}
+      {collectionMethod === "ship" && (
+        <div style={{ marginBottom: 16 }}>
+          <label style={labelStyle}>Shipping Address</label>
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <input type="text" placeholder="Street Address" value={street} onChange={(e) => setStreet(e.target.value)} style={inputStyle} />
+            <div style={{ display: "flex", gap: 10 }}>
+              <input type="text" placeholder="City" value={city} onChange={(e) => setCity(e.target.value)} style={{ ...inputStyle, flex: 2 }} />
+              <input type="text" placeholder="State" value={state} onChange={(e) => setState(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+              <input type="text" placeholder="ZIP" value={zip} onChange={(e) => setZip(e.target.value)} style={{ ...inputStyle, flex: 1 }} />
+            </div>
+          </div>
+          <p style={{ color: colors.textMuted, fontSize: 11, marginTop: 8, lineHeight: 1.5 }}>Delivery takes 7–14 business days after processing.</p>
+        </div>
+      )}
+
+      {/* In-person: contact info */}
+      {collectionMethod === "inperson" && (
+        <div style={{ background: colors.surfaceOverlay, border: `1px solid ${colors.border}`, borderRadius: 10, padding: "14px 16px", marginBottom: 16 }}>
+          <p style={{ color: colors.textSecondary, fontSize: 13, lineHeight: 1.6, margin: 0 }}>
+            To organise in-person collection at our next card show, please reach out to us:
+          </p>
+          <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+            <a
+              href="mailto:support@tash.cards"
+              style={{ color: colors.green, fontSize: 13, fontWeight: 600, textDecoration: "none", display: "flex", alignItems: "center", gap: 6 }}
+            >
+              ✉ support@tash.cards
+            </a>
+            <a
+              href="https://www.instagram.com/tash.cards"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: colors.green, fontSize: 13, fontWeight: 600, textDecoration: "none", display: "flex", alignItems: "center", gap: 6 }}
+            >
+              📷 @tash.cards on Instagram
+            </a>
+          </div>
+          <p style={{ color: colors.textMuted, fontSize: 11, marginTop: 10, lineHeight: 1.5 }}>
+            The 10% withdrawal fee will be charged when your request is confirmed.
+          </p>
+        </div>
+      )}
+
       <div style={{ display: "flex", gap: 10 }}>
         <button onClick={onCancel} style={{ flex: 1, background: "transparent", border: `1px solid ${colors.border}`, borderRadius: 10, color: colors.textSecondary, fontSize: 13, fontWeight: 600, padding: "10px 16px", cursor: "pointer" }}>Cancel</button>
-        <button onClick={handleConfirm} style={{ flex: 1, background: canSubmit ? colors.gold : colors.surface, border: `1px solid ${canSubmit ? colors.gold : colors.border}`, borderRadius: 10, color: canSubmit ? colors.textInverse : colors.textMuted, fontSize: 13, fontWeight: 600, padding: "10px 16px", cursor: canSubmit ? "pointer" : "not-allowed" }}>Confirm Withdrawal →</button>
+        {collectionMethod === "ship" ? (
+          <button
+            onClick={handleConfirm}
+            disabled={!canSubmitShip}
+            style={{ flex: 2, background: canSubmitShip ? colors.gold : colors.surface, border: `1px solid ${canSubmitShip ? colors.gold : colors.border}`, borderRadius: 10, color: canSubmitShip ? colors.textInverse : colors.textMuted, fontSize: 13, fontWeight: 600, padding: "10px 16px", cursor: canSubmitShip ? "pointer" : "not-allowed" }}
+          >
+            Confirm Withdrawal →
+          </button>
+        ) : (
+          <a
+            href="mailto:support@tash.cards"
+            style={{ flex: 2, background: colors.gold, border: `1px solid ${colors.gold}`, borderRadius: 10, color: colors.textInverse, fontSize: 13, fontWeight: 600, padding: "10px 16px", cursor: "pointer", textDecoration: "none", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center" }}
+          >
+            Contact Us →
+          </a>
+        )}
       </div>
     </>
   );
