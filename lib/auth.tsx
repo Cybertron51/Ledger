@@ -30,6 +30,7 @@ export interface User {
   stripeAccountId: string | null;
   stripeOnboardingComplete: boolean;
   referralCodeId: string | null;
+  isAdmin: boolean;
 }
 
 interface AuthContextValue {
@@ -89,6 +90,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         stripeAccountId: data.stripe_account_id || null,
         stripeOnboardingComplete: !!data.stripe_onboarding_complete,
         referralCodeId: data.referral_code_id || null,
+        isAdmin: !!data.is_admin,
       });
     } catch (err) {
       console.error("Failed to fetch user profile", err);

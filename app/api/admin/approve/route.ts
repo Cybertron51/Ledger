@@ -11,11 +11,12 @@ export const dynamic = "force-dynamic";
 export async function PATCH(req: NextRequest) {
     const auth = await verifyAuth(req);
     if (!auth) return unauthorized();
-    // 2. Check if user is admin (hardcoded for now)
-    if (auth.email !== "derekyp9@gmail.com") {
+    if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
+
+    const { data: adminProfile } = await supabaseAdmin.from('profiles').select('is_admin').eq('id', auth.userId).single();
+    if (!adminProfile?.is_admin) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
     }
-    if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
 
     const body = await req.json();
     const { holdingId, action = "approve" } = body;
@@ -30,7 +31,7 @@ export async function PATCH(req: NextRequest) {
         .from("vault_holdings")
         .update({ status: nextStatus })
         .eq("id", holdingId)
-        .in("status", ["shipped", "pending_authentication", "returning"])  // Can process shipped, pending, or returning items
+        .in("status", ["shipped", "pending_authentication", "returning", "received"])  // Can process shipped, received, pending, or returning items
         .select()
         .single();
 
@@ -48,10 +49,12 @@ export async function PATCH(req: NextRequest) {
 export async function GET(req: NextRequest) {
     const auth = await verifyAuth(req);
     if (!auth) return unauthorized();
-    if (auth.email !== "derekyp9@gmail.com") {
+    if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
+
+    const { data: adminProfile } = await supabaseAdmin.from('profiles').select('is_admin').eq('id', auth.userId).single();
+    if (!adminProfile?.is_admin) {
         return NextResponse.json({ error: "Forbidden: Admin only" }, { status: 403 });
     }
-    if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
 
     const { data, error } = await supabaseAdmin
         .from("vault_holdings")
@@ -70,7 +73,7 @@ export async function GET(req: NextRequest) {
       shipping_address,
       profiles(name, email)
     `)
-        .in("status", ["shipped", "pending_authentication", "returning"])
+        .in("status", ["shipped", "pending_authentication", "returning", "received"])
         .order("created_at", { ascending: false });
 
     console.log(`[Admin GET] Fetching shipped/pending items. User: ${auth.userId}`);

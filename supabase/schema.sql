@@ -160,6 +160,7 @@ CREATE TABLE IF NOT EXISTS profiles (
   stripe_account_id TEXT,
   stripe_onboarding_complete BOOLEAN DEFAULT FALSE,
   referral_code_id UUID,
+  is_admin       BOOLEAN     DEFAULT FALSE,
   created_at     TIMESTAMPTZ DEFAULT NOW(),
   updated_at     TIMESTAMPTZ DEFAULT NOW(),
 

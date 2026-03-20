@@ -10,10 +10,12 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
     const auth = await verifyAuth(req);
     if (!auth) return unauthorized();
-    if (auth.email !== "derekyp9@gmail.com") {
+    if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
+
+    const { data: adminProfile } = await supabaseAdmin.from('profiles').select('is_admin').eq('id', auth.userId).single();
+    if (!adminProfile?.is_admin) {
         return NextResponse.json({ error: "Forbidden: Admin only" }, { status: 403 });
     }
-    if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
 
     try {
         // We keep `last_sign_in_at` from Supabase Auth,
@@ -27,7 +29,7 @@ export async function GET(req: NextRequest) {
 
         const { data: profileRows, error: profilesError } = await supabaseAdmin
             .from("profiles")
-            .select("id, created_at")
+            .select("id, created_at, is_admin")
             .in("id", authUserIds);
 
         if (profilesError) {
@@ -35,14 +37,14 @@ export async function GET(req: NextRequest) {
             console.warn("Failed to load profiles.created_at for admin users:", profilesError.message);
         }
 
-        const profileById = new Map<string, string>();
+        const profileById = new Map<string, any>();
         for (const p of profileRows ?? []) {
-            if (p.id && p.created_at) profileById.set(p.id, p.created_at);
+            if (p.id) profileById.set(p.id, p);
         }
 
         const users = authUsers.map((user) => {
-            const profileCreatedAt = profileById.get(user.id);
-            const created_at = profileCreatedAt ?? user.created_at;
+            const profile = profileById.get(user.id);
+            const created_at = profile?.created_at ?? user.created_at;
             const last_login = user.last_sign_in_at || created_at;
 
             return {
@@ -50,6 +52,7 @@ export async function GET(req: NextRequest) {
                 email: user.email,
                 created_at,
                 last_login,
+                is_admin: !!profile?.is_admin,
             };
         });
 
@@ -57,6 +60,35 @@ export async function GET(req: NextRequest) {
         users.sort((a, b) => new Date(b.last_login).getTime() - new Date(a.last_login).getTime());
 
         return NextResponse.json(users);
+    } catch (err: any) {
+        return NextResponse.json({ error: err.message }, { status: 500 });
+    }
+}
+
+export async function PATCH(req: NextRequest) {
+    const auth = await verifyAuth(req);
+    if (!auth) return unauthorized();
+    
+    if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
+
+    const { data: adminProfile } = await supabaseAdmin.from('profiles').select('is_admin').eq('id', auth.userId).single();
+    if (!adminProfile?.is_admin) {
+        return NextResponse.json({ error: "Forbidden: Admin only" }, { status: 403 });
+    }
+
+    try {
+        const body = await req.json();
+        const { userId, is_admin } = body;
+        if (!userId || is_admin === undefined) return NextResponse.json({ error: "Missing fields" }, { status: 400 });
+
+        const { error } = await supabaseAdmin
+            .from("profiles")
+            .update({ is_admin })
+            .eq("id", userId);
+
+        if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+        
+        return NextResponse.json({ success: true });
     } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });
     }

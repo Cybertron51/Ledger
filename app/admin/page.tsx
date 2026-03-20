@@ -178,7 +178,7 @@ export default function AdminPage() {
             setIsLoading(false);
         }
 
-        if (isAuthenticated && user?.email === "derekyp9@gmail.com") fetchData();
+        if (isAuthenticated && user?.isAdmin) fetchData();
         else setIsLoading(false);
     }, [isAuthenticated, user?.email, activeTab]);
 
@@ -280,7 +280,17 @@ export default function AdminPage() {
         }
     }
 
-    if ((!isAuthenticated || user?.email !== "derekyp9@gmail.com") && !isLoading) {
+    async function toggleAdminStatus(userId: string, currentStatus: boolean) {
+        if (!confirm(`Are you sure you want to ${currentStatus ? 'revoke admin from' : 'promote'} this user?`)) return;
+        try {
+            await apiPatch("/api/admin/users", { userId, is_admin: !currentStatus });
+            setUsersList((prev) => prev.map((u) => u.id === userId ? { ...u, is_admin: !currentStatus } : u));
+        } catch (err: any) {
+            alert(`Failed to update admin status: ${err.message}`);
+        }
+    }
+
+    if ((!isAuthenticated || !user?.isAdmin) && !isLoading) {
         return (
             <div
                 className="flex flex-col items-center justify-center gap-4"
@@ -775,6 +785,9 @@ export default function AdminPage() {
                                             <th onClick={() => handleSort("last_login")} style={{ padding: "12px 16px", textAlign: "right", fontSize: 13, fontWeight: 600, color: colors.textSecondary, cursor: "pointer", userSelect: "none" }}>
                                                 <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>Last Login {sortConfig?.key === "last_login" && (sortConfig.direction === "asc" ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}</div>
                                             </th>
+                                            <th style={{ padding: "12px 16px", textAlign: "right", fontSize: 13, fontWeight: 600, color: colors.textSecondary, userSelect: "none" }}>
+                                                Role
+                                            </th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -784,6 +797,25 @@ export default function AdminPage() {
                                                 <td style={{ padding: "12px 16px", fontSize: 14, color: colors.textPrimary, fontWeight: 500 }}>{u.email}</td>
                                                 <td style={{ padding: "12px 16px", fontSize: 13, color: colors.textSecondary, textAlign: "right" }}>
                                                     {u.last_login ? new Date(u.last_login).toLocaleString() : "Never"}
+                                                </td>
+                                                <td style={{ padding: "12px 16px", textAlign: "right" }}>
+                                                    <button
+                                                        onClick={() => toggleAdminStatus(u.id, u.is_admin)}
+                                                        style={{
+                                                            padding: "6px 10px",
+                                                            borderRadius: 6,
+                                                            fontSize: 11,
+                                                            fontWeight: 600,
+                                                            cursor: u.email === user?.email ? "not-allowed" : "pointer",
+                                                            border: "none",
+                                                            background: u.is_admin ? "rgba(239, 68, 68, 0.1)" : "rgba(59, 130, 246, 0.1)",
+                                                            color: u.is_admin ? "#EF4444" : "#3B82F6",
+                                                            opacity: u.email === user?.email ? 0.5 : 1
+                                                        }}
+                                                        disabled={u.email === user?.email}
+                                                    >
+                                                        {u.is_admin ? "Revoke Admin" : "Make Admin"}
+                                                    </button>
                                                 </td>
                                             </tr>
                                         ))}

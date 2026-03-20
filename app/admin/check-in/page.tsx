@@ -53,7 +53,7 @@ function CheckInContent() {
     const [receivingBatch, setReceivingBatch] = useState(false);
     const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-    const isAdmin = user?.email === "derekyp9@gmail.com";
+    const isAdmin = user?.isAdmin;
 
     useEffect(() => {
         if (!isAuthenticated || !isAdmin || !id) {

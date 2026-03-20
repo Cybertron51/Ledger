@@ -3,8 +3,6 @@ import { supabaseAdmin, verifyAuth, unauthorized } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
 
-const ADMIN_EMAIL = "derekyp9@gmail.com";
-
 const QR_SELECT = `
     id,
     name,
@@ -57,8 +55,11 @@ function mapQrCode(qr: any) {
  */
 export async function GET(req: NextRequest) {
     const auth = await verifyAuth(req);
-    if (!auth || auth.email !== ADMIN_EMAIL) return unauthorized();
+    if (!auth) return unauthorized();
     if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
+
+    const { data: adminProfile } = await supabaseAdmin.from('profiles').select('is_admin').eq('id', auth.userId).single();
+    if (!adminProfile?.is_admin) return unauthorized();
 
     const id = req.nextUrl.searchParams.get("id");
 
@@ -91,8 +92,11 @@ export async function GET(req: NextRequest) {
  */
 export async function PATCH(req: NextRequest) {
     const auth = await verifyAuth(req);
-    if (!auth || auth.email !== ADMIN_EMAIL) return unauthorized();
+    if (!auth) return unauthorized();
     if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
+
+    const { data: adminProfile } = await supabaseAdmin.from('profiles').select('is_admin').eq('id', auth.userId).single();
+    if (!adminProfile?.is_admin) return unauthorized();
 
     const body = await req.json();
     const { action } = body;
@@ -110,6 +114,22 @@ export async function PATCH(req: NextRequest) {
             .single();
 
         if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+        // Trickle down status to vault_holdings
+        const { data: junctions } = await supabaseAdmin
+            .from("qr_code_holdings")
+            .select("holding_id")
+            .eq("qr_code_id", qrCodeId);
+            
+        if (junctions && junctions.length > 0) {
+            const holdingIds = junctions.map((j: any) => j.holding_id);
+            await supabaseAdmin
+                .from("vault_holdings")
+                .update({ status: "received" })
+                .in("id", holdingIds)
+                .eq("status", "shipped");
+        }
+
         return NextResponse.json(data);
     }
 

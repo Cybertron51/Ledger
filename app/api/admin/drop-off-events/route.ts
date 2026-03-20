@@ -3,10 +3,10 @@ import { supabaseAdmin, verifyAuth, unauthorized } from "@/lib/supabase-admin";
 
 export const dynamic = "force-dynamic";
 
-const ADMIN_EMAIL = "derekyp9@gmail.com";
-
-function isAdmin(email: string) {
-    return email === ADMIN_EMAIL;
+async function isAdmin(userId: string) {
+    if (!supabaseAdmin) return false;
+    const { data } = await supabaseAdmin.from('profiles').select('is_admin').eq('id', userId).single();
+    return !!data?.is_admin;
 }
 
 /**
@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
     if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
 
     const auth = await verifyAuth(req);
-    const showAll = auth && isAdmin(auth.email);
+    const showAll = auth && await isAdmin(auth.userId);
 
     let query = supabaseAdmin
         .from("drop_off_events")
@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
  */
 export async function POST(req: NextRequest) {
     const auth = await verifyAuth(req);
-    if (!auth || !isAdmin(auth.email)) return unauthorized();
+    if (!auth || !(await isAdmin(auth.userId))) return unauthorized();
     if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
 
     const body = await req.json();
@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
  */
 export async function PATCH(req: NextRequest) {
     const auth = await verifyAuth(req);
-    if (!auth || !isAdmin(auth.email)) return unauthorized();
+    if (!auth || !(await isAdmin(auth.userId))) return unauthorized();
     if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
 
     const body = await req.json();
@@ -91,7 +91,7 @@ export async function PATCH(req: NextRequest) {
  */
 export async function DELETE(req: NextRequest) {
     const auth = await verifyAuth(req);
-    if (!auth || !isAdmin(auth.email)) return unauthorized();
+    if (!auth || !(await isAdmin(auth.userId))) return unauthorized();
     if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
 
     const body = await req.json();

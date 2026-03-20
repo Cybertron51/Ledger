@@ -17,10 +17,12 @@ const DEFAULT_LIMIT = 100;
 export async function GET(req: NextRequest) {
     const auth = await verifyAuth(req);
     if (!auth) return unauthorized();
-    if (auth.email !== "derekyp9@gmail.com") {
+    if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
+
+    const { data: adminProfile } = await supabaseAdmin.from('profiles').select('is_admin').eq('id', auth.userId).single();
+    if (!adminProfile?.is_admin) {
         return NextResponse.json({ error: "Forbidden: Admin only" }, { status: 403 });
     }
-    if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
 
     const { searchParams } = new URL(req.url);
     const exportAll = searchParams.get("all") === "true";

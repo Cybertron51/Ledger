@@ -28,7 +28,7 @@ export function GlobalRouteCheck({ children }: { children: React.ReactNode }) {
 
     const isAllowedRoute = PUBLIC_ROUTES.includes(pathname || "");
     const needsOnboarding = Boolean(
-        isAuthenticated && user && user.email !== 'derekyp9@gmail.com' &&
+        isAuthenticated && user && !user.isAdmin &&
         (!user.referralCodeId || !isProfileComplete)
     );
 

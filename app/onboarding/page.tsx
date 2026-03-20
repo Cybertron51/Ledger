@@ -101,7 +101,7 @@ export default function OnboardingPage() {
 
     // If user is already fully onboarded, redirect them away
     useEffect(() => {
-        if (isProfileComplete && (user?.referralCodeId || user?.email === 'derekyp9@gmail.com')) {
+        if (isProfileComplete && (user?.referralCodeId || user?.isAdmin || user?.email === 'derekyp9@gmail.com')) {
             const returnTo = searchParams.get("returnTo");
             router.push(returnTo || "/portfolio");
         }
@@ -165,7 +165,7 @@ export default function OnboardingPage() {
 
     // Auto-skip step 1 if username is available and it was an autofill
     useEffect(() => {
-        if (step === 1 && usernameStatus === "available" && hasAutofilled && !hasAutoSkipped && !isSubmitting && (user?.referralCodeId || user?.email === 'derekyp9@gmail.com')) {
+        if (step === 1 && usernameStatus === "available" && hasAutofilled && !hasAutoSkipped && !isSubmitting && (user?.referralCodeId || user?.isAdmin || user?.email === 'derekyp9@gmail.com')) {
             setHasAutoSkipped(true);
             const timer = setTimeout(() => {
                 nextStep();
@@ -268,7 +268,7 @@ export default function OnboardingPage() {
                 )}
 
                 <AnimatePresence mode="wait">
-                    {!user?.referralCodeId && user?.email !== 'derekyp9@gmail.com' && (
+                    {!user?.referralCodeId && !user?.isAdmin && user?.email !== 'derekyp9@gmail.com' && (
                         <motion.div
                             key="referral-gate"
                             initial={{ opacity: 0, y: 20 }}
@@ -338,7 +338,7 @@ export default function OnboardingPage() {
                         </motion.div>
                     )}
 
-                    {(user?.referralCodeId || user?.email === 'derekyp9@gmail.com') && step === 1 && (
+                    {(user?.referralCodeId || user?.isAdmin || user?.email === 'derekyp9@gmail.com') && step === 1 && (
                         <motion.div
                             key="step2"
                             initial={{ opacity: 0, x: 50 }}
@@ -414,7 +414,7 @@ export default function OnboardingPage() {
                         </motion.div>
                     )}
 
-                    {(user?.referralCodeId || user?.email === 'derekyp9@gmail.com') && step === 2 && (
+                    {(user?.referralCodeId || user?.isAdmin || user?.email === 'derekyp9@gmail.com') && step === 2 && (
                         <motion.div
                             key="step3"
                             initial={{ opacity: 0, x: 50 }}
@@ -471,7 +471,7 @@ export default function OnboardingPage() {
                         </motion.div>
                     )}
 
-                    {(user?.referralCodeId || user?.email === 'derekyp9@gmail.com') && step === 3 && (
+                    {(user?.referralCodeId || user?.isAdmin || user?.email === 'derekyp9@gmail.com') && step === 3 && (
                         <motion.div
                             key="step4"
                             initial={{ opacity: 0, x: 50 }}

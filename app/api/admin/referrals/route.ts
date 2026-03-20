@@ -10,10 +10,12 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
     const auth = await verifyAuth(req);
     if (!auth) return unauthorized();
-    if (auth.email !== "derekyp9@gmail.com") {
+    if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
+
+    const { data: adminProfile } = await supabaseAdmin.from('profiles').select('is_admin').eq('id', auth.userId).single();
+    if (!adminProfile?.is_admin) {
         return NextResponse.json({ error: "Forbidden: Admin only" }, { status: 403 });
     }
-    if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
 
     try {
         // Query referral codes and count users associated with each
@@ -41,10 +43,12 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
     const auth = await verifyAuth(req);
     if (!auth) return unauthorized();
-    if (auth.email !== "derekyp9@gmail.com") {
+    if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
+
+    const { data: adminProfile } = await supabaseAdmin.from('profiles').select('is_admin').eq('id', auth.userId).single();
+    if (!adminProfile?.is_admin) {
         return NextResponse.json({ error: "Forbidden: Admin only" }, { status: 403 });
     }
-    if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
 
     try {
         const { code, description } = await req.json();
@@ -70,10 +74,12 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
     const auth = await verifyAuth(req);
     if (!auth) return unauthorized();
-    if (auth.email !== "derekyp9@gmail.com") {
+    if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
+
+    const { data: adminProfile } = await supabaseAdmin.from('profiles').select('is_admin').eq('id', auth.userId).single();
+    if (!adminProfile?.is_admin) {
         return NextResponse.json({ error: "Forbidden: Admin only" }, { status: 403 });
     }
-    if (!supabaseAdmin) return NextResponse.json({ error: "DB not configured" }, { status: 503 });
 
     try {
         const { id } = await req.json();
