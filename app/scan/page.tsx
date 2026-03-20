@@ -460,6 +460,9 @@ export default function ScanPage() {
     const successfulScans = scans.filter((s) => s.status === "success" && s.result);
     if (successfulScans.length === 0) return;
 
+    let hasError = false;
+    let successCount = 0;
+
     for (const item of successfulScans) {
       const result = item.result!;
       const holdingId = uuidv4();
@@ -502,6 +505,7 @@ export default function ScanPage() {
             ...newHolding,
             status: "pending_authentication",
           });
+          successCount++;
         } else {
           // 1. New scan flow: Save to Supabase DB using our helper
           const dbRes: any = await insertVaultHolding(newHolding, undefined, {
@@ -519,13 +523,18 @@ export default function ScanPage() {
 
           // 2. Update local context immediately
           addHolding(newHolding);
+          successCount++;
         }
       } catch (e) {
         console.error("Failed to process vault operation:", e);
+        setGlobalError(`Failed to add "${result.name}" to vault. Please try again.`);
+        hasError = true;
       }
     }
 
-    setStage("confirmed");
+    if (!hasError && successCount > 0) {
+      setStage("confirmed");
+    }
   }
 
   // ── Reset to scan again ────────────────────────────────
