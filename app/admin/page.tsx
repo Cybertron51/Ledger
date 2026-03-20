@@ -785,9 +785,6 @@ export default function AdminPage() {
                                             <th onClick={() => handleSort("email")} style={{ padding: "12px 16px", textAlign: "left", fontSize: 13, fontWeight: 600, color: colors.textSecondary, cursor: "pointer", userSelect: "none" }}>
                                                 <div style={{ display: "flex", alignItems: "center", gap: 4 }}>Email {sortConfig?.key === "email" && (sortConfig.direction === "asc" ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}</div>
                                             </th>
-                                            <th onClick={() => handleSort("created_at")} style={{ padding: "12px 16px", textAlign: "right", fontSize: 13, fontWeight: 600, color: colors.textSecondary, cursor: "pointer", userSelect: "none" }}>
-                                                <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>Account Created {sortConfig?.key === "created_at" && (sortConfig.direction === "asc" ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}</div>
-                                            </th>
                                             <th onClick={() => handleSort("last_login")} style={{ padding: "12px 16px", textAlign: "right", fontSize: 13, fontWeight: 600, color: colors.textSecondary, cursor: "pointer", userSelect: "none" }}>
                                                 <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>Last Login {sortConfig?.key === "last_login" && (sortConfig.direction === "asc" ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}</div>
                                             </th>
@@ -798,9 +795,6 @@ export default function AdminPage() {
                                             <tr key={u.id} style={{ borderBottom: i < sortedUsers.length - 1 ? `1px solid ${colors.borderSubtle}` : "none", transition: "background 0.15s" }} onMouseEnter={(e) => e.currentTarget.style.background = "rgba(255,255,255,0.02)"} onMouseLeave={(e) => e.currentTarget.style.background = "transparent"}>
                                                 <td style={{ padding: "12px 16px", fontSize: 13, color: colors.textMuted, fontFamily: "monospace" }}>{u.id}</td>
                                                 <td style={{ padding: "12px 16px", fontSize: 14, color: colors.textPrimary, fontWeight: 500 }}>{u.email}</td>
-                                                <td style={{ padding: "12px 16px", fontSize: 13, color: colors.textSecondary, textAlign: "right" }}>
-                                                    {u.created_at ? new Date(u.created_at).toLocaleString() : "Unknown"}
-                                                </td>
                                                 <td style={{ padding: "12px 16px", fontSize: 13, color: colors.textSecondary, textAlign: "right" }}>
                                                     {u.last_login ? new Date(u.last_login).toLocaleString() : "Never"}
                                                 </td>
