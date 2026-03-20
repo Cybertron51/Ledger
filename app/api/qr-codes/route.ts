@@ -147,13 +147,21 @@ export async function PATCH(req: NextRequest) {
     // Verify QR code belongs to user
     const { data: qr, error: qrErr } = await supabaseAdmin
         .from("qr_codes")
-        .select("id, user_id")
+        .select("id, user_id, status")
         .eq("id", qrCodeId)
         .eq("user_id", auth.userId)
         .single();
 
     if (qrErr || !qr) {
         return NextResponse.json({ error: "QR code not found" }, { status: 404 });
+    }
+
+    // Once a batch has been physically received, do not allow edits/removals.
+    if (qr.status === "received" || qr.status === "completed") {
+        return NextResponse.json(
+            { error: "This QR code batch has been received and cannot be modified." },
+            { status: 400 }
+        );
     }
 
     // Rename
@@ -240,13 +248,21 @@ export async function DELETE(req: NextRequest) {
     // Verify ownership
     const { data: qr } = await supabaseAdmin
         .from("qr_codes")
-        .select("id")
+        .select("id, status")
         .eq("id", qrCodeId)
         .eq("user_id", auth.userId)
         .single();
 
     if (!qr) {
         return NextResponse.json({ error: "QR code not found" }, { status: 404 });
+    }
+
+    // Once a batch has been physically received, do not allow deletion.
+    if (qr.status === "received" || qr.status === "completed") {
+        return NextResponse.json(
+            { error: "This QR code batch has been received and cannot be deleted." },
+            { status: 400 }
+        );
     }
 
     // Delete QR code (cascades to junction table)

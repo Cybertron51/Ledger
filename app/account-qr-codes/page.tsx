@@ -164,6 +164,7 @@ export default function AccountQrCodesPage() {
                         {qrCodes.map((qr) => {
                             const isExpanded = expandedId === qr.id;
                             const isEditingName = editingNameId === qr.id;
+                            const isLocked = qr.status === "received" || qr.status === "completed";
 
                             return (
                                 <div
@@ -211,16 +212,18 @@ export default function AccountQrCodesPage() {
                                             ) : (
                                                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                                     <p style={{ color: colors.textPrimary, fontSize: 15, fontWeight: 700 }}>{qr.name}</p>
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation();
-                                                            setEditingNameId(qr.id);
-                                                            setEditName(qr.name);
-                                                        }}
-                                                        style={{ background: "none", border: "none", cursor: "pointer", color: colors.textMuted, padding: 2 }}
-                                                    >
-                                                        <Edit3 size={13} />
-                                                    </button>
+                                                    {!isLocked && (
+                                                        <button
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                setEditingNameId(qr.id);
+                                                                setEditName(qr.name);
+                                                            }}
+                                                            style={{ background: "none", border: "none", cursor: "pointer", color: colors.textMuted, padding: 2 }}
+                                                        >
+                                                            <Edit3 size={13} />
+                                                        </button>
+                                                    )}
                                                 </div>
                                             )}
                                             <p style={{ color: colors.textMuted, fontSize: 11, marginTop: 4 }}>
@@ -312,21 +315,25 @@ export default function AccountQrCodesPage() {
                                                                 >
                                                                     {h.status === "shipped" ? "Submitted" : h.status}
                                                                 </span>
-                                                                <button
-                                                                    onClick={() => handleRemoveHolding(qr.id, h.id)}
-                                                                    style={{ background: "none", border: "none", cursor: "pointer", color: colors.textMuted, padding: 4, flexShrink: 0 }}
-                                                                    title="Remove from group"
-                                                                >
-                                                                    <X size={14} />
-                                                                </button>
+                                                                {!isLocked ? (
+                                                                    <button
+                                                                        onClick={() => handleRemoveHolding(qr.id, h.id)}
+                                                                        style={{ background: "none", border: "none", cursor: "pointer", color: colors.textMuted, padding: 4, flexShrink: 0 }}
+                                                                        title="Remove from group"
+                                                                    >
+                                                                        <X size={14} />
+                                                                    </button>
+                                                                ) : (
+                                                                    <span style={{ fontSize: 11, color: colors.textMuted, paddingLeft: 4 }}>Locked</span>
+                                                                )}
                                                             </div>
                                                         );
                                                     })}
                                                 </div>
                                             )}
 
-                                            {/* Add cards button */}
-                                            {availableForAdd.length > 0 && (
+                                            {/* Add cards button (disabled after received) */}
+                                            {!isLocked && availableForAdd.length > 0 && (
                                                 <div style={{ marginTop: 12 }}>
                                                     {showAddPicker === qr.id ? (
                                                         <div style={{ background: colors.surfaceOverlay, border: `1px solid ${colors.border}`, borderRadius: 10, padding: 12 }}>
@@ -393,24 +400,30 @@ export default function AccountQrCodesPage() {
 
                                             {/* Delete QR code */}
                                             <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${colors.borderSubtle}` }}>
-                                                <button
-                                                    onClick={() => handleDeleteQrCode(qr.id)}
-                                                    style={{
-                                                        display: "flex",
-                                                        alignItems: "center",
-                                                        gap: 6,
-                                                        padding: "8px 14px",
-                                                        borderRadius: 8,
-                                                        border: `1px solid rgba(255,59,48,0.2)`,
-                                                        background: "rgba(255,59,48,0.06)",
-                                                        color: colors.red,
-                                                        fontSize: 12,
-                                                        fontWeight: 600,
-                                                        cursor: "pointer",
-                                                    }}
-                                                >
-                                                    <Trash2 size={13} /> Delete QR Code
-                                                </button>
+                                                {!isLocked ? (
+                                                    <button
+                                                        onClick={() => handleDeleteQrCode(qr.id)}
+                                                        style={{
+                                                            display: "flex",
+                                                            alignItems: "center",
+                                                            gap: 6,
+                                                            padding: "8px 14px",
+                                                            borderRadius: 8,
+                                                            border: `1px solid rgba(255,59,48,0.2)`,
+                                                            background: "rgba(255,59,48,0.06)",
+                                                            color: colors.red,
+                                                            fontSize: 12,
+                                                            fontWeight: 600,
+                                                            cursor: "pointer",
+                                                        }}
+                                                    >
+                                                        <Trash2 size={13} /> Delete QR Code
+                                                    </button>
+                                                ) : (
+                                                    <div style={{ color: colors.textMuted, fontSize: 12, fontWeight: 600 }}>
+                                                        Batch received — cannot modify
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     )}
