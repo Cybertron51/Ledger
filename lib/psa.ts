@@ -133,9 +133,14 @@ export async function fetchPSAMetadata(certNumber: string): Promise<any | null> 
 export async function uploadCardImageToStorage(imageUrl: string, certNumber: string): Promise<string | null> {
     try {
         // 1. Download the image into a buffer
-        const res = await fetch(imageUrl);
+        const res = await fetch(imageUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+                'Referer': 'https://www.psacard.com/'
+            }
+        });
         if (!res.ok) {
-            console.error(`Failed to download image from ${imageUrl}: ${res.statusText}`);
+            console.error(`Failed to download image from ${imageUrl}: ${res.statusText} (${res.status})`);
             return null;
         }
         const blob = await res.blob();

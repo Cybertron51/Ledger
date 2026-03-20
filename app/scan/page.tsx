@@ -1162,6 +1162,16 @@ function ResultStage({
                   <img
                     src={item.cardImageUrl || item.blobUrl}
                     alt={result.name}
+                    onError={(e) => {
+                      // Level 1: PSA image failed, try local blob
+                      if (item.cardImageUrl && e.currentTarget.src === item.cardImageUrl) {
+                        e.currentTarget.src = item.blobUrl;
+                      } 
+                      // Level 2: Local blob failed (unlikely but possible), try thumbnail base64
+                      else if (e.currentTarget.src === item.blobUrl && item.thumbDataUrl) {
+                        e.currentTarget.src = item.thumbDataUrl;
+                      }
+                    }}
                     style={{ width: "100%", height: "100%", objectFit: "contain" }}
                   />
                 </div>
