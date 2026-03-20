@@ -68,7 +68,10 @@ interface ScanResult {
   condition: ConditionDetail;
   notes: string;
   isFullSlabVisible: boolean;
+  isCleanBackground: boolean;
+  isFillingScreen: boolean;
   rawImageUrl?: string;
+  duplicateStatus?: "none" | "mine" | "someone_else";
 }
 
 export interface ScanItem {
@@ -83,6 +86,7 @@ export interface ScanItem {
   cardImageUrl?: string | null;
   rawImageUrl?: string | null;
   pricing?: CardPricing | null;
+  duplicateStatus?: "none" | "mine" | "someone_else";
   error?: string;
   selected?: boolean;
 }
@@ -414,14 +418,8 @@ export default function ScanPage() {
       // Check if duplicate in current batch
       const isDuplicateInBatch = scans.some((s, i) => i !== index && s.result?.certNumber === data.card.certNumber);
 
-      // We also check against existing portfolio to be safe (client side first pass)
-      // `holdings` comes from the top-level usePortfolio hook
-      // EXEMPT: If we are in re-upload mode, the current item being re-uploaded is NOT a duplicate of itself.
-      const existingHolding = data.card.certNumber ?
-        holdings.find(h => h.certNumber === data.card.certNumber && h.id !== reuploadId) : null;
-
-      if (isDuplicateInBatch || existingHolding) {
-        throw new Error(`Duplicate PSA Certificate: ${data.card.certNumber}`);
+      if (isDuplicateInBatch) {
+        throw new Error(`Duplicate PSA Certificate in batch: ${data.card.certNumber}`);
       }
 
       setScans((prev) => {
@@ -434,6 +432,7 @@ export default function ScanPage() {
           cardImageUrl: data.imageUrl,
           rawImageUrl: data.rawImageUrl,
           pricing: data.pricing,
+          duplicateStatus: data.duplicateStatus || "none",
         };
 
         // Auto-populate estimated value if provided by JustTCG
@@ -1092,9 +1091,9 @@ function ResultStage({
   const successes = scans.filter((s) => s.status === "success" && s.result);
   const errors = scans.filter((s) => s.status === "error");
 
-  // A card is "valid to add" if it has a cert number and full slab is visible
+  // A card is "valid to add" if it has a cert number AND is not registered to someone else
   const validToAddCount = successes.filter(
-    (s) => s.result?.certNumber && s.result?.isFullSlabVisible
+    (s) => s.result?.certNumber && s.duplicateStatus !== "someone_else"
   ).length;
 
   return (
@@ -1129,7 +1128,10 @@ function ResultStage({
           {successes.map((item, idx) => {
             const result = item.result!;
             const gc = gradeColor(result.estimatedGrade);
-            const isValid = result.certNumber && result.isFullSlabVisible;
+            const isDuplicate = item.duplicateStatus && item.duplicateStatus !== "none";
+            const isOthersDuplicate = item.duplicateStatus === "someone_else";
+            const isHighQuality = result.isFullSlabVisible && result.isCleanBackground && result.isFillingScreen;
+            const isValid = !!result.certNumber && !isOthersDuplicate;
 
             return (
               <div
@@ -1138,11 +1140,11 @@ function ResultStage({
                   display: "flex",
                   gap: 16,
                   padding: 16,
-                  background: isValid ? colors.surface : "rgba(255,59,48,0.04)",
+                  background: isValid ? colors.surface : "rgba(255,200,66,0.04)",
                   borderRadius: 16,
-                  border: `1px solid ${isValid ? colors.border : colors.red + "44"}`,
+                  border: `1px solid ${isValid ? (isHighQuality ? colors.border : "#F5C842" + "44") : colors.red + "44"}`,
                   alignItems: "flex-start",
-                  opacity: isValid ? 1 : 0.8,
+                  opacity: 1,
                 }}
               >
                 {/* Thumb - Larger */}
@@ -1183,8 +1185,41 @@ function ResultStage({
                   </div>
 
                   {result.certNumber && (
-                    <div style={{ fontSize: 12, color: colors.textMuted, fontFamily: "monospace", letterSpacing: "0.5px" }}>
-                      CERT #{result.certNumber}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <div style={{ fontSize: 12, color: colors.textMuted, fontFamily: "monospace", letterSpacing: "0.5px" }}>
+                        CERT #{result.certNumber}
+                      </div>
+                      {isDuplicate && (
+                        <span style={{ 
+                          fontSize: 10, 
+                          fontWeight: 700, 
+                          textTransform: "uppercase", 
+                          padding: "1px 6px", 
+                          borderRadius: 4,
+                          background: isOthersDuplicate ? "rgba(255,59,48,0.1)" : "rgba(245,200,66,0.1)",
+                          color: isOthersDuplicate ? colors.red : "#D4A51C",
+                          border: `1px solid ${isOthersDuplicate ? colors.red : "#F5C842"}44`
+                        }}>
+                          {isOthersDuplicate ? "Collision" : "Owned"}
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {isDuplicate && (
+                    <div style={{ 
+                      marginTop: 4, 
+                      padding: "6px 10px", 
+                      background: isOthersDuplicate ? "rgba(255,59,48,0.08)" : "rgba(245,200,66,0.08)", 
+                      borderRadius: 8,
+                      border: `1px solid ${isOthersDuplicate ? colors.red : "#F5C842"}22`
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <AlertCircle size={14} color={isOthersDuplicate ? colors.red : "#F5C842"} />
+                        <span style={{ fontSize: 12, fontWeight: 600, color: isOthersDuplicate ? colors.red : "#D4A51C" }}>
+                          {isOthersDuplicate ? "Already registered to another user" : "Already in your vault"}
+                        </span>
+                      </div>
                     </div>
                   )}
 
@@ -1202,12 +1237,13 @@ function ResultStage({
                           placeholder="0.00"
                           value={estimatedValues[item.id] || ""}
                           onChange={(e) => onSetEstimatedValue(item.id, parseFloat(e.target.value) || 0)}
+                          disabled={isOthersDuplicate}
                           style={{
                             flex: 1,
                             padding: "8px 10px 8px 4px",
                             fontSize: 14,
                             fontWeight: 600,
-                            color: colors.textPrimary,
+                            color: isOthersDuplicate ? colors.textMuted : colors.textPrimary,
                             background: "transparent",
                             border: "none",
                             outline: "none",
@@ -1218,15 +1254,15 @@ function ResultStage({
                     </div>
                   )}
 
-                  {!isValid && (
-                    <div style={{ marginTop: 8, padding: 8, background: "rgba(255,59,48,0.1)", borderRadius: 8 }}>
-                      <p style={{ fontSize: 12, color: colors.red, margin: "0", fontWeight: 600, display: "flex", alignItems: "center", gap: 4 }}>
-                        <XCircle size={14} /> Unacceptable Scan
+                  {!isHighQuality && !isOthersDuplicate && (
+                    <div style={{ marginTop: 8, padding: "8px 12px", background: "rgba(245,200,66,0.1)", borderRadius: 8, border: "1px solid rgba(245,200,66,0.2)" }}>
+                      <p style={{ fontSize: 12, color: "#D4A51C", margin: "0", fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+                        <AlertCircle size={14} color="#F5C842" /> {result.isFullSlabVisible ? "Quality Warning" : "Partial Scan Detected"}
                       </p>
-                      <p style={{ fontSize: 12, color: colors.textPrimary, margin: "4px 0 0" }}>
-                        {!result.isFullSlabVisible
-                          ? "The entire PSA slab must be visible."
-                          : "Certification number could not be verified. Please ensure the barcode is clear."}
+                      <p style={{ fontSize: 11, color: colors.textMuted, margin: "4px 0 0", lineHeight: 1.4 }}>
+                        {!result.isFullSlabVisible 
+                          ? "Image is cropped. Our team will verify the full card once received." 
+                          : "Background or lighting is sub-optimal. This may affect AI reliability."}
                       </p>
                     </div>
                   )}

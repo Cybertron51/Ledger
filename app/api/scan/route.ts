@@ -11,6 +11,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getMarketCards } from "@/lib/db/cards";
 import { fetchPSAImage, fetchPSAMetadata, uploadCardImageToStorage, uploadRawScanToStorage } from "@/lib/psa";
 import { fetchJustTCGPrice } from "@/lib/justtcg";
+import { supabaseAdmin, verifyAuth } from "@/lib/supabase-admin";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_GENERATIVE_API_KEY ?? "");
 
@@ -185,19 +186,9 @@ export async function POST(req: NextRequest) {
     imageUrl = loadedImageUrl;
     rawImageUrl = loadedRawImageUrl;
 
-    // ─── Strict Quality Enforcement ───
-    // If we couldn't fetch an official PSA image, the user's scan must be high quality.
-    if (!imageUrl) {
-      if (!card.isFullSlabVisible) {
-        return NextResponse.json({ error: "Unacceptable Scan: The full trading card slab (label and body) must be visible." }, { status: 422 });
-      }
-      if (!card.isCleanBackground) {
-        return NextResponse.json({ error: "Unacceptable Scan: Please use a clean, monocolor background with no other objects." }, { status: 422 });
-      }
-      if (!card.isFillingScreen) {
-        return NextResponse.json({ error: "Unacceptable Scan: The card must fill most of the screen. Move closer and try again." }, { status: 422 });
-      }
-    }
+    // ─── Quality Validation (Warnings Only) ───
+    // We no longer hard-fail on quality issues, but we pass the flags to the frontend
+    // so it can show appropriate warnings/milder UI states.
 
     // ─── Symbol Matching (Crucial for preventing duplicates) ───
     const cardNameLower = (card.name ?? "").toLowerCase();
@@ -227,12 +218,28 @@ export async function POST(req: NextRequest) {
       return isNameMatch && isSetMatch && isGradeMatch && isYearMatch;
     });
 
+    // ─── Duplicate Detection ───────────
+    let duplicateStatus: "none" | "mine" | "someone_else" = "none";
+    if (card.certNumber && supabaseAdmin) {
+      const { data: existingHolding } = await supabaseAdmin
+        .from("vault_holdings")
+        .select("user_id")
+        .eq("cert_number", card.certNumber)
+        .maybeSingle();
+      
+      if (existingHolding) {
+        const auth = await verifyAuth(req);
+        duplicateStatus = (auth && (existingHolding as any).user_id === auth.userId) ? "mine" : "someone_else";
+      }
+    }
+
     return NextResponse.json({
       card,
       matchedSymbol: matchedAsset?.symbol ?? null,
       imageUrl,
       rawImageUrl,
       pricing: pricing || null,
+      duplicateStatus,
       validation: {
         isFullSlabVisible: card.isFullSlabVisible,
         isCleanBackground: card.isCleanBackground,
