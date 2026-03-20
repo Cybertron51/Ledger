@@ -951,7 +951,7 @@ export default function AdminPage() {
                                                     </span>
                                                 </div>
                                                 <p style={{ fontSize: 12, color: colors.textSecondary }}>
-                                                    {qr.user?.name || qr.user?.email || "Unknown user"} · {qr.holdings?.length || 0} cards · {new Date(qr.created_at).toLocaleDateString()}
+                                                    {qr.user?.name || qr.user?.email || "Unknown user"} · {qr.holdings?.length || 0} cards · {new Date(qr.created_at).toLocaleString()}
                                                 </p>
                                             </div>
                                             <div style={{ display: "flex", alignItems: "center", gap: 8, color: colors.textMuted }}>
@@ -1003,7 +1003,7 @@ export default function AdminPage() {
                                                                             background: h.status === "tradable" ? colors.greenMuted : h.status === "disapproved" ? "rgba(255,59,48,0.12)" : "rgba(245,200,66,0.15)",
                                                                             color: h.status === "tradable" ? colors.green : h.status === "disapproved" ? colors.red : "#F5C842",
                                                                         }}>
-                                                                            {h.status}
+                                                                            {h.status === "drop_off" ? "Drop-off" : h.status}
                                                                         </span>
                                                                     </div>
                                                                     <p style={{ fontSize: 12, color: colors.textSecondary }}>{h.set}</p>
@@ -1017,7 +1017,7 @@ export default function AdminPage() {
                                                                 </div>
 
                                                                 {/* Actions */}
-                                                                {h.status === "shipped" && (
+                                                                {(h.status === "shipped" || h.status === "drop_off") && (
                                                                     <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
                                                                         <button
                                                                             onClick={() => approveQrHolding(h.id, "approve")}

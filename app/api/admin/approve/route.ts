@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
       shipping_address,
       profiles(name, email)
     `)
-        .in("status", ["shipped", "pending_authentication", "returning", "received"])
+        .in("status", ["shipped", "returning", "received"])
         .order("created_at", { ascending: false });
 
     console.log(`[Admin GET] Fetching shipped/pending items. User: ${auth.userId}`);

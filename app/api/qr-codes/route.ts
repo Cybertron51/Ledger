@@ -115,10 +115,10 @@ export async function POST(req: NextRequest) {
 
     if (jErr) return NextResponse.json({ error: jErr.message }, { status: 500 });
 
-    // Set all holdings to shipped
+    // Set all holdings to drop_off
     const { error: updateErr } = await supabaseAdmin
         .from("vault_holdings")
-        .update({ status: "shipped" })
+        .update({ status: "drop_off" })
         .in("id", holdingIds)
         .eq("user_id", auth.userId);
 
@@ -194,7 +194,7 @@ export async function PATCH(req: NextRequest) {
 
             await supabaseAdmin
                 .from("vault_holdings")
-                .update({ status: "shipped" })
+                .update({ status: "drop_off" })
                 .in("id", validIds)
                 .eq("user_id", auth.userId);
         }
@@ -214,7 +214,7 @@ export async function PATCH(req: NextRequest) {
             .update({ status: "pending_authentication" })
             .in("id", removeHoldingIds)
             .eq("user_id", auth.userId)
-            .eq("status", "shipped");
+            .eq("status", "drop_off");
     }
 
     return NextResponse.json({ success: true });
@@ -278,7 +278,7 @@ export async function DELETE(req: NextRequest) {
             .update({ status: "pending_authentication" })
             .in("id", holdingIds)
             .eq("user_id", auth.userId)
-            .eq("status", "shipped");
+            .eq("status", "drop_off");
     }
 
     return NextResponse.json({ success: true });

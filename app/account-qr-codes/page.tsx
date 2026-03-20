@@ -227,7 +227,7 @@ export default function AccountQrCodesPage() {
                                                 </div>
                                             )}
                                             <p style={{ color: colors.textMuted, fontSize: 11, marginTop: 4 }}>
-                                                {qr.type === "drop_off" ? "Drop-Off" : "Shipping"} · {qr.holdings.length} card{qr.holdings.length !== 1 ? "s" : ""} · {new Date(qr.created_at).toLocaleDateString()}
+                                                {qr.type === "drop_off" ? "Drop-Off" : "Shipping"} · {qr.holdings.length} card{qr.holdings.length !== 1 ? "s" : ""} · {new Date(qr.created_at).toLocaleString()}
                                             </p>
                                         </div>
 
