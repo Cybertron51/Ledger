@@ -177,6 +177,7 @@ function AccountChip() {
             {/* Actions */}
             {[
               { label: "Account Settings", href: "/account" },
+              { label: "My QR Codes", href: "/account-qr-codes" },
               { label: "Transaction History", href: "/history" },
               { label: "Deposit Funds", href: "/deposit" },
               { label: "Withdraw Funds", href: "/withdraw" },
