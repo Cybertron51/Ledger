@@ -16,7 +16,6 @@ import { colors } from "@/lib/theme";
 import { formatCurrency } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { SparklineChart } from "./SparklineChart";
 import type { VaultHolding } from "@/lib/vault-data";
 import type { AssetData, PricePoint } from "@/lib/market-data";
 
@@ -499,8 +498,8 @@ function HoldingRow({
         </p>
       </div>
 
-      {/* Center: sparkline */}
-      <SparklineChart data={sparkline} isUp={asset.change >= 0} width={60} height={28} />
+      {/* Center: (intentionally removed) sparkline green/red line */}
+      <div style={{ width: 60, height: 28, flexShrink: 0 }} />
 
       {/* Right: price + chevron */}
       <div className="shrink-0 text-right">
@@ -599,7 +598,8 @@ function MarketRow({
         <p className="mt-[2px] text-[11px]" style={{ color: colors.textMuted }}>{asset.set}</p>
       </div>
 
-      <SparklineChart data={sparkline} isUp={isUp} width={56} height={24} />
+      {/* Center: (intentionally removed) sparkline green/red line */}
+      <div style={{ width: 56, height: 24, flexShrink: 0 }} />
 
       <div className="shrink-0 text-right">
         <p

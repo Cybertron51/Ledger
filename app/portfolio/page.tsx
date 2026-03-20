@@ -602,18 +602,6 @@ export default function PortfolioPage() {
                       </p>
                       <div className="flex items-center gap-1 shrink-0">
                         <div
-                          className="rounded-full"
-                          style={{
-                            width: 6, height: 6, flexShrink: 0,
-                            background:
-                              holding.status === "tradable" ? colors.green
-                                : holding.status === "listed" ? colors.gold
-                                  : holding.status === "withdrawn" ? colors.textMuted
-                                    : holding.status === "disapproved" ? colors.red
-                                      : "#F5C842", // pending, shipped, received, authenticating
-                          }}
-                        />
-                        <div
                           className="rounded-[5px] px-[6px] py-[2px]"
                           style={{ background: `${gradeColor}18`, border: `1px solid ${gradeColor}44` }}
                         >
