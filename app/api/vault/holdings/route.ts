@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
             status: status || "pending_authentication",
             acquisition_price: acquisitionPrice,
             cert_number: certNumber || null,
-            image_url: imageUrl || null,
+            image_url: imageUrl || rawImageUrl || null,
             raw_image_url: rawImageUrl || null,
             name: cardMeta?.name || "Unknown Card",
             set_name: cardMeta?.set || "Unknown Set",
@@ -210,6 +210,7 @@ export async function PATCH(req: NextRequest) {
     if (status) updates.status = status;
     if (certNumber !== undefined) updates.cert_number = certNumber;
     if (imageUrl) updates.image_url = imageUrl;
+    else if (rawImageUrl) updates.image_url = rawImageUrl;
     if (rawImageUrl !== undefined) updates.raw_image_url = rawImageUrl;
 
     if (cardMeta) {
