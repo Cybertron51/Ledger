@@ -209,9 +209,11 @@ export default function ScanPage() {
   }
 
   // ── Handle file upload ─────────────────────────────────
-  function handleFiles(files: FileList | null) {
-    if (!files) return;
+  async function handleFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setGlobalError(null); // Clear any previous errors
 
+    const newScans: ScanItem[] = [];
     Array.from(files).forEach((file) => {
       if (!file.type.startsWith("image/")) return;
       const url = URL.createObjectURL(file);
@@ -538,9 +540,10 @@ export default function ScanPage() {
   }
 
   // ── Reset to scan again ────────────────────────────────
-  function reset() {
+  function resetScan() {
     scans.forEach((s) => URL.revokeObjectURL(s.blobUrl));
     setScans([]);
+    setEstimatedValues({});
     setActiveScanIndex(0);
     setGlobalError(null);
     setCameraError(null);
@@ -630,15 +633,16 @@ export default function ScanPage() {
           <ResultStage
             scans={scans}
             onAddToVault={addToVault}
-            onScanAgain={reset}
+            onScanAgain={resetScan}
             estimatedValues={estimatedValues}
             onSetEstimatedValue={(id, val) => setEstimatedValues(prev => ({ ...prev, [id]: val }))}
+            error={globalError}
           />
         )}
 
         {/* ── Stage 4: Confirmed ── */}
         {stage === "confirmed" && (
-          <ConfirmedStage totalCount={scans.filter(s => s.status === "success" && s.result?.certNumber && s.result?.isFullSlabVisible).length} onScanAgain={reset} />
+          <ConfirmedStage totalCount={scans.filter(s => s.status === "success" && s.result?.certNumber && s.result?.isFullSlabVisible).length} onScanAgain={resetScan} />
         )}
       </div>
     </div>
@@ -1074,6 +1078,7 @@ interface ResultStageProps {
   onScanAgain: () => void;
   estimatedValues: Record<string, number>;
   onSetEstimatedValue: (id: string, value: number) => void;
+  error?: string | null;
 }
 
 function ResultStage({
@@ -1082,6 +1087,7 @@ function ResultStage({
   onScanAgain,
   estimatedValues,
   onSetEstimatedValue,
+  error,
 }: ResultStageProps) {
   const successes = scans.filter((s) => s.status === "success" && s.result);
   const errors = scans.filter((s) => s.status === "error");
@@ -1093,6 +1099,24 @@ function ResultStage({
 
   return (
     <>
+      {error && (
+        <div style={{
+          marginTop: 20,
+          padding: 16,
+          background: "rgba(255,59,48,0.1)",
+          border: `1px solid ${colors.red}44`,
+          borderRadius: 12,
+          display: "flex",
+          gap: 12,
+          alignItems: "center"
+        }}>
+          <AlertCircle size={20} color={colors.red} />
+          <p style={{ fontSize: 13, color: colors.red, fontWeight: 600, margin: 0 }}>
+            {error}
+          </p>
+        </div>
+      )}
+
       <div style={{ paddingTop: 28, paddingBottom: 16 }}>
         <p style={{ fontSize: 11, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.08em", color: colors.textMuted, margin: 0 }}>
           Batch Analysis Complete

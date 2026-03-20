@@ -68,6 +68,31 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "symbol and acquisitionPrice are required" }, { status: 400 });
     }
 
+    // 1. DUPLICATE CHECK — Check if this cert number is already in the vault
+    if (certNumber) {
+        const { data: existingHolding } = await supabaseAdmin
+            .from("vault_holdings")
+            .select("id, user_id")
+            .eq("cert_number", certNumber)
+            .single();
+
+        if (existingHolding) {
+            if (existingHolding.user_id === auth.userId) {
+                return NextResponse.json({
+                    error: "This card is already in your vault.",
+                    holdingId: existingHolding.id,
+                    code: "DUPLICATE_HOLDING"
+                }, { status: 409 });
+            } else {
+                return NextResponse.json({
+                    error: "This card is already registered in another user's vault.",
+                    code: "CERT_COLLISION"
+                }, { status: 409 });
+            }
+        }
+    }
+
+    // 2. CARD CATALOG — Find or create the card entry in the marketplace catalog
     let resolvedCardId = cardId || null;
 
     // If no existing card match, auto-create a cards + prices entry from scan metadata
@@ -120,29 +145,6 @@ export async function POST(req: NextRequest) {
             }
         } catch (err) {
             console.error("Error auto-creating card entry:", err);
-        }
-    }
-
-    if (certNumber) {
-        const { data: existingHolding } = await supabaseAdmin
-            .from("vault_holdings")
-            .select("id, user_id")
-            .eq("cert_number", certNumber)
-            .single();
-
-        if (existingHolding) {
-            if (existingHolding.user_id === auth.userId) {
-                return NextResponse.json({
-                    error: "This card is already in your vault.",
-                    holdingId: existingHolding.id,
-                    code: "DUPLICATE_HOLDING"
-                }, { status: 409 });
-            } else {
-                return NextResponse.json({
-                    error: "This card is already registered in another user's vault.",
-                    code: "CERT_COLLISION"
-                }, { status: 409 });
-            }
         }
     }
 
