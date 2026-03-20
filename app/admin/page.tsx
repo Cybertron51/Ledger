@@ -629,7 +629,19 @@ export default function AdminPage() {
                         ) : (
                             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                                 {returnsList.map((item) => (
-                                    <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 16, background: colors.surfaceOverlay, border: `1px solid ${colors.border}`, borderRadius: 12, padding: 16 }}>
+                                    <div
+                                        key={item.id}
+                                        style={{
+                                            display: "flex",
+                                            flexWrap: "wrap",
+                                            alignItems: "flex-start",
+                                            gap: 16,
+                                            background: colors.surfaceOverlay,
+                                            border: `1px solid ${colors.border}`,
+                                            borderRadius: 12,
+                                            padding: 16,
+                                        }}
+                                    >
 
                                         {/* Images Grid */}
                                         <div style={{ display: "flex", gap: 12, flexShrink: 0 }}>
@@ -717,11 +729,13 @@ export default function AdminPage() {
                                         </div>
 
                                         {/* Actions */}
-                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 1, minWidth: 0 }}>
                                             <button
                                                 onClick={() => updateItemStatus(item.id, "return", true)}
                                                 style={{
                                                     display: "flex",
+                                                    flexWrap: "wrap",
+                                                    justifyContent: "center",
                                                     alignItems: "center",
                                                     gap: 6,
                                                     padding: "10px 16px",
@@ -733,6 +747,9 @@ export default function AdminPage() {
                                                     fontSize: 13,
                                                     cursor: "pointer",
                                                     transition: "transform 0.1s",
+                                                    maxWidth: "100%",
+                                                    whiteSpace: "normal",
+                                                    wordBreak: "break-word",
                                                 }}
                                                 onMouseDown={(e) => (e.currentTarget.style.transform = "scale(0.97)")}
                                                 onMouseUp={(e) => (e.currentTarget.style.transform = "scale(1)")}
