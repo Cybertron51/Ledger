@@ -35,12 +35,17 @@ export async function PATCH(req: NextRequest) {
         .update(payload)
         .eq("id", holdingId)
         .eq("user_id", auth.userId)  // Security: only own holdings
-        .select()
-        .single();
+        .select();
 
     if (error) {
-        console.error("Supabase Error:", error); return NextResponse.json({ error: error.message }, { status: 500 });
+        console.error("[/api/vault/update] Supabase Error:", error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json(data);
+    if (!data || data.length === 0) {
+        console.warn(`[/api/vault/update] No holding found with id=${holdingId} for user=${auth.userId}`);
+        return NextResponse.json({ error: "Holding not found or access denied" }, { status: 404 });
+    }
+
+    return NextResponse.json(data[0]);
 }

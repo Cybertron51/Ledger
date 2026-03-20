@@ -458,7 +458,7 @@ export default function ScanPage() {
   // ── Add to vault ───────────────────────────────────────
   async function addToVault() {
     if (!user) return;
-    const successfulScans = scans.filter((s) => s.status === "success" && s.result);
+    const successfulScans = scans.filter((s) => s.status === "success" && s.result && s.selected !== false);
     if (successfulScans.length === 0) return;
 
     let hasError = false;
@@ -635,6 +635,7 @@ export default function ScanPage() {
             onScanAgain={resetScan}
             estimatedValues={estimatedValues}
             onSetEstimatedValue={(id, val) => setEstimatedValues(prev => ({ ...prev, [id]: val }))}
+            onToggleSelection={toggleSelection}
             error={globalError}
           />
         )}
@@ -1077,6 +1078,7 @@ interface ResultStageProps {
   onScanAgain: () => void;
   estimatedValues: Record<string, number>;
   onSetEstimatedValue: (id: string, value: number) => void;
+  onToggleSelection: (id: string) => void;
   error?: string | null;
 }
 
@@ -1086,14 +1088,15 @@ function ResultStage({
   onScanAgain,
   estimatedValues,
   onSetEstimatedValue,
+  onToggleSelection,
   error,
 }: ResultStageProps) {
   const successes = scans.filter((s) => s.status === "success" && s.result);
   const errors = scans.filter((s) => s.status === "error");
 
-  // A card is "valid to add" if it has a cert number AND is not registered to someone else
+  // A card is "valid to add" if it has a cert number, is not registered to someone else, AND is selected
   const validToAddCount = successes.filter(
-    (s) => s.result?.certNumber && s.duplicateStatus !== "someone_else"
+    (s) => s.result?.certNumber && s.duplicateStatus !== "someone_else" && s.selected !== false
   ).length;
 
   return (
@@ -1140,12 +1143,15 @@ function ResultStage({
                   display: "flex",
                   gap: 16,
                   padding: 16,
-                  background: isValid ? colors.surface : "rgba(255,200,66,0.04)",
+                  background: isValid ? (item.selected !== false ? colors.surface : "rgba(255,255,255,0.02)") : "rgba(255,200,66,0.04)",
                   borderRadius: 16,
-                  border: `1px solid ${isValid ? (isHighQuality ? colors.border : "#F5C842" + "44") : colors.red + "44"}`,
+                  border: `1px solid ${isValid ? (item.selected !== false ? (isHighQuality ? colors.border : "#F5C842" + "44") : colors.border + "44") : colors.red + "44"}`,
                   alignItems: "flex-start",
-                  opacity: 1,
+                  opacity: item.selected !== false ? 1 : 0.6,
+                  cursor: "pointer",
+                  transition: "all 0.2s ease",
                 }}
+                onClick={() => isValid && onToggleSelection(item.id)}
               >
                 {/* Thumb - Larger */}
                 <div
@@ -1157,8 +1163,33 @@ function ResultStage({
                     border: `1px solid ${colors.border}`,
                     flexShrink: 0,
                     background: colors.surfaceOverlay,
+                    position: "relative",
                   }}
                 >
+                  {/* Selection Checkbox Overlay */}
+                  {isValid && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: 8,
+                        left: 8,
+                        width: 24,
+                        height: 24,
+                        borderRadius: "50%",
+                        background: item.selected !== false ? colors.green : "rgba(255,255,255,0.2)",
+                        border: `2px solid ${item.selected !== false ? "transparent" : "rgba(255,255,255,0.4)"}`,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        zIndex: 10,
+                        boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
+                      }}
+                    >
+                      {item.selected !== false && (
+                        <div style={{ width: 10, height: 10, borderRadius: "50%", background: "white" }} />
+                      )}
+                    </div>
+                  )}
                   <img
                     src={item.cardImageUrl || item.blobUrl}
                     alt={result.name}
