@@ -27,6 +27,7 @@ export default function AdminPage() {
     const [adminQrCodes, setAdminQrCodes] = useState<any[]>([]);
     const [expandedQr, setExpandedQr] = useState<string | null>(null);
     const [dropOffEvents, setDropOffEvents] = useState<any[]>([]);
+    const [isForbidden, setIsForbidden] = useState(false);
     const [newEvent, setNewEvent] = useState({ address: "", date: "", time_start: "", time_end: "", description: "" });
     const [isCreatingEvent, setIsCreatingEvent] = useState(false);
     const [editingEventId, setEditingEventId] = useState<string | null>(null);
@@ -141,6 +142,7 @@ export default function AdminPage() {
     useEffect(() => {
         async function fetchData() {
             setIsLoading(true);
+            setIsForbidden(false);
             try {
                 if (activeTab === "intake") {
                     const data = await apiGet<any[]>(`/api/admin/approve?t=${Date.now()}`);
@@ -168,7 +170,9 @@ export default function AdminPage() {
                 }
             } catch (err: any) {
                 // If it's a 403, fail silently for non-admins so we don't spam alerts.
-                if (!err.message.includes("403")) {
+                if (err.message.includes("403")) {
+                    setIsForbidden(true);
+                } else {
                     alert(`Error loading admin data: ${err.message}`);
                 }
                 if (activeTab === "intake") setShippedItems([]);
@@ -180,7 +184,7 @@ export default function AdminPage() {
 
         if (isAuthenticated && user?.isAdmin) fetchData();
         else setIsLoading(false);
-    }, [isAuthenticated, user?.email, activeTab]);
+    }, [isAuthenticated, activeTab, user?.isAdmin]);
 
     async function updateItemStatus(id: string, action: "approve" | "disapprove" | "reset" | "return", isReturn = false) {
         // Optimistic UI
@@ -290,7 +294,7 @@ export default function AdminPage() {
         }
     }
 
-    if ((!isAuthenticated || !user?.isAdmin) && !isLoading) {
+    if ((!isAuthenticated || !user?.isAdmin || isForbidden) && !isLoading) {
         return (
             <div
                 className="flex flex-col items-center justify-center gap-4"
@@ -298,7 +302,11 @@ export default function AdminPage() {
             >
                 <div style={{ padding: 32, borderRadius: 16, border: `1px solid ${colors.border}`, background: colors.surfaceOverlay, textAlign: "center", maxWidth: 400 }}>
                     <h2 style={{ color: colors.textPrimary, fontSize: 18, fontWeight: 700, marginBottom: 8 }}>Admin Access Required</h2>
-                    <p style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 24 }}>You must be logged in as an administrator to access this dashboard.</p>
+                    <p style={{ color: colors.textSecondary, fontSize: 13, marginBottom: 24 }}>
+                        {!isAuthenticated
+                            ? "You must be logged in as an administrator to access this dashboard."
+                            : "Your account is signed in, but is not included in the admin allowlist."}
+                    </p>
                     {!isAuthenticated && (
                         <button
                             onClick={() => setShowSignIn(true)}

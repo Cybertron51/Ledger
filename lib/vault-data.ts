@@ -8,6 +8,8 @@
 
 export interface VaultHolding {
   id: string;
+  /** Catalog card id when linked; used for trade-driven price charts */
+  cardId?: string | null;
   name: string;
   symbol: string;       // matches AssetData.symbol in lib/market-data.ts
   grade: number;        // 8, 9, or 10

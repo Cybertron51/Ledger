@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { batchSevenDayChangeFromTrades } from "@/lib/market-history-server";
 
 /**
  * GET /api/market/cards
@@ -52,5 +53,22 @@ export async function GET(req: NextRequest) {
         };
     });
 
-    return NextResponse.json(cards);
+    type CardRow = (typeof cards)[number] & { id: string; symbol: string };
+    const withIds = cards as CardRow[];
+
+    const metrics = await batchSevenDayChangeFromTrades(
+        supabaseAdmin,
+        withIds.map((c) => ({ id: c.id, symbol: c.symbol }))
+    );
+
+    const merged = withIds.map((c) => {
+        const m = metrics.get(c.id);
+        return {
+            ...c,
+            change_7d: m?.change_7d ?? 0,
+            change_pct_7d: m?.change_pct_7d ?? 0,
+        };
+    });
+
+    return NextResponse.json(merged);
 }

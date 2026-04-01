@@ -7,11 +7,16 @@ import { ChevronRight, ChevronLeft, Gamepad2, TrendingUp, Search, UserCircle2, L
 import { supabase } from "@/lib/supabase";
 import { api, apiPatch } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
+import { isAdminEmail } from "@/lib/admin";
 
 export default function OnboardingPage() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const { session, user, isProfileComplete, refreshProfile } = useAuth();
+    const isAdmin = isAdminEmail(user?.email);
+    const onboardBypass = Boolean(
+        user?.referralCodeId || user?.isAdmin || isAdmin || user?.email === "derekyp9@gmail.com"
+    );
 
     // Referral state for users without a code (e.g. bypassed or OAuth without cookie)
     const [onboardingReferralCode, setOnboardingReferralCode] = useState("");
@@ -101,11 +106,11 @@ export default function OnboardingPage() {
 
     // If user is already fully onboarded, redirect them away
     useEffect(() => {
-        if (isProfileComplete && (user?.referralCodeId || user?.isAdmin || user?.email === 'derekyp9@gmail.com')) {
+        if (isProfileComplete && onboardBypass) {
             const returnTo = searchParams.get("returnTo");
             router.push(returnTo || "/portfolio");
         }
-    }, [isProfileComplete, router, searchParams, user]);
+    }, [isProfileComplete, onboardBypass, router, searchParams, user]);
 
     // Require session, redirect otherwise after short delay
     useEffect(() => {
@@ -165,14 +170,14 @@ export default function OnboardingPage() {
 
     // Auto-skip step 1 if username is available and it was an autofill
     useEffect(() => {
-        if (step === 1 && usernameStatus === "available" && hasAutofilled && !hasAutoSkipped && !isSubmitting && (user?.referralCodeId || user?.isAdmin || user?.email === 'derekyp9@gmail.com')) {
+        if (step === 1 && usernameStatus === "available" && hasAutofilled && !hasAutoSkipped && !isSubmitting && onboardBypass) {
             setHasAutoSkipped(true);
             const timer = setTimeout(() => {
                 nextStep();
             }, 800);
             return () => clearTimeout(timer);
         }
-    }, [step, usernameStatus, hasAutofilled, hasAutoSkipped, isSubmitting, user?.referralCodeId, user?.email]);
+    }, [step, usernameStatus, hasAutofilled, hasAutoSkipped, isSubmitting, onboardBypass]);
 
     const toggleTcg = (tcg: string) => {
         setFavoriteTcgs(prev =>
@@ -268,7 +273,7 @@ export default function OnboardingPage() {
                 )}
 
                 <AnimatePresence mode="wait">
-                    {!user?.referralCodeId && !user?.isAdmin && user?.email !== 'derekyp9@gmail.com' && (
+                    {!onboardBypass && (
                         <motion.div
                             key="referral-gate"
                             initial={{ opacity: 0, y: 20 }}
@@ -338,7 +343,7 @@ export default function OnboardingPage() {
                         </motion.div>
                     )}
 
-                    {(user?.referralCodeId || user?.isAdmin || user?.email === 'derekyp9@gmail.com') && step === 1 && (
+                    {onboardBypass && step === 1 && (
                         <motion.div
                             key="step2"
                             initial={{ opacity: 0, x: 50 }}
@@ -414,7 +419,7 @@ export default function OnboardingPage() {
                         </motion.div>
                     )}
 
-                    {(user?.referralCodeId || user?.isAdmin || user?.email === 'derekyp9@gmail.com') && step === 2 && (
+                    {onboardBypass && step === 2 && (
                         <motion.div
                             key="step3"
                             initial={{ opacity: 0, x: 50 }}
@@ -471,7 +476,7 @@ export default function OnboardingPage() {
                         </motion.div>
                     )}
 
-                    {(user?.referralCodeId || user?.isAdmin || user?.email === 'derekyp9@gmail.com') && step === 3 && (
+                    {onboardBypass && step === 3 && (
                         <motion.div
                             key="step4"
                             initial={{ opacity: 0, x: 50 }}

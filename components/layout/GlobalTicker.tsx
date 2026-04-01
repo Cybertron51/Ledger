@@ -12,7 +12,7 @@ import React, { useState, useEffect } from "react";
 import { TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { colors } from "@/lib/theme";
-import { tickPrice, type AssetData } from "@/lib/market-data";
+import { recomputeAssetChangeForNewPrice, tickPrice, type AssetData } from "@/lib/market-data";
 import { useIsMobile } from "@/lib/hooks/useIsMobile";
 
 // ─────────────────────────────────────────────────────────
@@ -31,7 +31,7 @@ function TickerChip({ item }: TickerChipProps) {
   return (
     <div
       className="flex items-center gap-[6px] px-4 select-none cursor-pointer"
-      title={`${item.name} · PSA ${item.grade} · ${item.set}`}
+      title={`${item.name} · PSA ${item.grade} · ${item.set} · ${item.changePct.toFixed(2)}% vs 7D start`}
     >
       {/* Symbol */}
       <span
@@ -102,6 +102,10 @@ interface GlobalTickerProps {
 export function GlobalTicker({ items }: GlobalTickerProps) {
   const [liveItems, setLiveItems] = useState<AssetData[]>(items);
 
+  useEffect(() => {
+    setLiveItems(items);
+  }, [items]);
+
   // Subscribe to live price changes
   useEffect(() => {
     let isMounted = true;
@@ -118,18 +122,17 @@ export function GlobalTicker({ items }: GlobalTickerProps) {
           (payload) => {
             if (!isMounted) return;
             const newPrice = payload.new.price;
-            const newChange = payload.new.change_24h;
-            const newPct = payload.new.change_pct_24h;
             const cardId = payload.new.card_id;
 
             setLiveItems((prev) =>
               prev.map((item) => {
                 if (item.id === cardId) {
+                  const { change, changePct } = recomputeAssetChangeForNewPrice(item, newPrice);
                   return {
                     ...item,
                     price: newPrice,
-                    change: newChange,
-                    changePct: newPct,
+                    change,
+                    changePct,
                   };
                 }
                 return item;

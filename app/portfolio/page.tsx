@@ -16,10 +16,11 @@ import Link from "next/link";
 import { X, Search, Plus, Camera, Upload, ArrowDownLeft, ArrowUpRight, Tag } from "lucide-react";
 import Image from "next/image";
 
-import type { PricePoint, TimeRange, AssetData } from "@/lib/market-data";
+import { generateHistory, type TimeRange, type AssetData, type PricePoint } from "@/lib/market-data";
 import { PriceChart } from "@/components/market/PriceChart";
 import { type VaultHolding } from "@/lib/vault-data";
 import { updateVaultHoldingStatus, insertVaultHolding } from "@/lib/db/vault";
+import { getPortfolioTradeHistory } from "@/lib/db/portfolio";
 import { usePortfolio } from "@/lib/portfolio-context";
 import { useAuth } from "@/lib/auth";
 import { SignInModal } from "@/components/auth/SignInModal";
@@ -775,6 +776,30 @@ interface PortfolioOverviewProps {
 function PortfolioOverview({ holdings, openOrders, priceMap, assets, activities, onSelectCard, onCancelOrder }: PortfolioOverviewProps) {
   const [range, setRange] = useState<TimeRange>("1M");
   const [portfolioTab, setPortfolioTab] = useState<"holdings" | "orders">("holdings");
+  const [portfolioHistory, setPortfolioHistory] = useState<PricePoint[]>([]);
+
+  const holdingsKey = useMemo(() => holdings.map((h) => h.id).join(","), [holdings]);
+
+  useEffect(() => {
+    if (holdings.length === 0) {
+      setPortfolioHistory([]);
+      return;
+    }
+    let alive = true;
+    (async () => {
+      const rows = await getPortfolioTradeHistory(range);
+      if (!alive) return;
+      setPortfolioHistory(
+        rows.map((r) => ({
+          time: new Date(r.recorded_at).getTime(),
+          price: r.price,
+        }))
+      );
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [holdingsKey, range]);
 
   // ── Portfolio-level stats ──────────────────────────────
   const totalValue = holdings.reduce((sum, h) => sum + (priceMap[h.symbol] ?? 0), 0);
@@ -790,81 +815,20 @@ function PortfolioOverview({ holdings, openOrders, priceMap, assets, activities,
   }, 0);
   const todayIsUp = todayChange >= 0;
 
-  const [chartData, setChartData] = useState<PricePoint[]>([{ time: Date.now(), price: totalValue }]);
-
-  useEffect(() => {
-    let isActive = true;
-
-    async function loadHistory() {
-      const days = range === "1D" ? 1 : range === "1W" ? 7 : range === "1M" ? 30 : range === "3M" ? 90 : 365;
-      const startTime = Date.now() - days * 24 * 60 * 60 * 1000;
-
-      const { getPriceHistory } = await import("@/lib/db/cards");
-
-      const histories = await Promise.all(
-        holdings.map(async (h) => {
+  // Weighted changePct — synthetic fallback only if trade history API returns nothing
+  const weightedChangePct =
+    totalValue > 0
+      ? holdings.reduce((sum, h) => {
+          const val = priceMap[h.symbol] ?? 0;
           const asset = assets.find((a) => a.symbol === h.symbol);
-          const cardId = asset?.id;
-          const current = priceMap[h.symbol] ?? 0;
+          return sum + (val / totalValue) * (asset?.changePct ?? 0);
+        }, 0)
+      : 0;
 
-          if (!cardId) return [{ time: startTime, price: current }];
-
-          const history = await getPriceHistory(cardId, days);
-          const formatted = (history ?? []).map((p) => ({
-            time: new Date(p.recorded_at).getTime(),
-            price: p.price,
-          }));
-
-          // If we have no history, use a constant series from `startTime`.
-          return formatted.length > 0 ? formatted : [{ time: startTime, price: current }];
-        })
-      );
-
-      if (!isActive) return;
-
-      // Safety: recharts expects at least 1 datapoint with valid numbers.
-      if (histories.length === 0) {
-        setChartData([{ time: Date.now(), price: totalValue }]);
-        return;
-      }
-
-      const times = Array.from(new Set(histories.flatMap((h) => h.map((p) => p.time)))).sort((a, b) => a - b);
-      if (times.length === 0) {
-        setChartData([{ time: Date.now(), price: totalValue }]);
-        return;
-      }
-
-      // Merge by carrying forward the last known price per card at each timestamp.
-      const indices = new Array(histories.length).fill(0);
-      const lastPrices = histories.map((h) => h[0]?.price ?? 0);
-      const merged: PricePoint[] = [];
-
-      for (const t of times) {
-        let sum = 0;
-        for (let i = 0; i < histories.length; i++) {
-          const h = histories[i];
-          while (indices[i] < h.length && h[indices[i]]!.time <= t) {
-            lastPrices[i] = h[indices[i]]!.price;
-            indices[i]++;
-          }
-          sum += lastPrices[i];
-        }
-        merged.push({ time: t, price: sum });
-      }
-
-      setChartData(merged);
-    }
-
-    loadHistory()
-      .catch((err) => {
-        console.error("Failed to load portfolio price history", err);
-        if (isActive) setChartData([{ time: Date.now(), price: totalValue }]);
-      });
-
-    return () => {
-      isActive = false;
-    };
-  }, [range, holdings, assets, priceMap, totalValue]);
+  const chartData =
+    portfolioHistory.length >= 2
+      ? portfolioHistory
+      : generateHistory(totalValue, weightedChangePct, range, "PORTFOLIO");
 
   // ── Category breakdown ─────────────────────────────────
   const categoryValues: Record<string, number> = {};
@@ -1463,17 +1427,12 @@ function DetailPanel({ holding, currentValue, changePct, priceHistoryCardId, onO
     let isActive = true;
 
     async function load() {
-      const days = range === "1D" ? 1 : range === "1W" ? 7 : range === "1M" ? 30 : range === "3M" ? 90 : 365;
       const fallback: PricePoint[] = [{ time: Date.now(), price: currentValue }];
 
-      // If we don't have the catalog card id yet, keep showing a safe fallback.
-      if (!priceHistoryCardId) {
-        setChartData(fallback);
-        return;
-      }
-
-      const { getPriceHistory } = await import("@/lib/db/cards");
-      const history = await getPriceHistory(priceHistoryCardId, days);
+      const { getPriceHistory, getPriceHistoryForHolding } = await import("@/lib/db/cards");
+      const history = priceHistoryCardId
+        ? await getPriceHistory(priceHistoryCardId, range)
+        : await getPriceHistoryForHolding(holding.symbol, holding.cardId, range);
 
       if (!isActive) return;
       if (!history || history.length === 0) {
@@ -1497,7 +1456,7 @@ function DetailPanel({ holding, currentValue, changePct, priceHistoryCardId, onO
     return () => {
       isActive = false;
     };
-  }, [range, priceHistoryCardId]);
+  }, [range, priceHistoryCardId, holding.symbol, holding.cardId, currentValue]);
 
   const statusConfig: Record<VaultHolding["status"], { label: string; bg: string; color: string }> = {
     pending_authentication: { label: "Pending Setup", bg: "rgba(245,200,66,0.15)", color: "#F5C842" },

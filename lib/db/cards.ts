@@ -7,6 +7,7 @@
  */
 
 import { apiGet } from "@/lib/api";
+import type { TimeRange } from "@/lib/chart-series";
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -34,6 +35,9 @@ export interface DBCard {
   price: number;
   change_24h: number;
   change_pct_24h: number;
+  /** Trade-tape 7D vs same 1W window as charts (API-computed) */
+  change_7d?: number;
+  change_pct_7d?: number;
   high_24h: number | null;
   low_24h: number | null;
   volume_24h: number;
@@ -82,16 +86,31 @@ export async function getCardBySymbol(symbol: string): Promise<DBCard | null> {
 }
 
 /**
- * Fetch price history for a card over a given number of days.
+ * Fetch bucketed price history from **trades** for a card (via cardId).
  */
-export async function getPriceHistory(
-  cardId: string,
-  days = 30
-): Promise<PricePoint[]> {
+export async function getPriceHistory(cardId: string, range: TimeRange): Promise<PricePoint[]> {
   try {
     return await apiGet<PricePoint[]>(
-      `/api/market/history?cardId=${encodeURIComponent(cardId)}&days=${days}`
+      `/api/market/history?cardId=${encodeURIComponent(cardId)}&range=${encodeURIComponent(range)}`
     );
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Trade history for a vault row: prefers `cardId` for catalog anchor; otherwise resolves by `symbol`.
+ */
+export async function getPriceHistoryForHolding(
+  symbol: string,
+  cardId: string | null | undefined,
+  range: TimeRange
+): Promise<PricePoint[]> {
+  try {
+    const q = cardId
+      ? `cardId=${encodeURIComponent(cardId)}&range=${encodeURIComponent(range)}`
+      : `symbol=${encodeURIComponent(symbol)}&range=${encodeURIComponent(range)}`;
+    return await apiGet<PricePoint[]>(`/api/market/history?${q}`);
   } catch {
     return [];
   }

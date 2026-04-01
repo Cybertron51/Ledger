@@ -14,6 +14,7 @@ export async function GET(req: NextRequest) {
         .from("vault_holdings")
         .select(`
       id,
+      card_id,
       symbol,
       name,
       set_name,
@@ -38,6 +39,7 @@ export async function GET(req: NextRequest) {
     const holdings = (data || []).map((row: Record<string, unknown>) => {
         return {
             id: row.id,
+            cardId: (row.card_id as string) ?? null,
             name: (row.name as string) || "Unknown Card",
             symbol: row.symbol,
             grade: (row.psa_grade as number) || 9,

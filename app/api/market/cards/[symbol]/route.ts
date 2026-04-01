@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { batchSevenDayChangeFromTrades } from "@/lib/market-history-server";
 
 /**
  * GET /api/market/cards/[symbol]
@@ -35,11 +36,18 @@ export async function GET(
     const prices = (Array.isArray(pricesRaw) ? pricesRaw[0] : pricesRaw) ?? {};
     const { prices: _drop, ...rest } = data;
 
+    const metrics = await batchSevenDayChangeFromTrades(supabaseAdmin, [
+        { id: rest.id as string, symbol: rest.symbol as string },
+    ]);
+    const m = metrics.get(rest.id as string);
+
     return NextResponse.json({
         ...rest,
         price: (prices.price as number) ?? 0,
         change_24h: (prices.change_24h as number) ?? 0,
         change_pct_24h: (prices.change_pct_24h as number) ?? 0,
+        change_7d: m?.change_7d ?? 0,
+        change_pct_7d: m?.change_pct_7d ?? 0,
         high_24h: (prices.high_24h as number) ?? null,
         low_24h: (prices.low_24h as number) ?? null,
         volume_24h: (prices.volume_24h as number) ?? 0,

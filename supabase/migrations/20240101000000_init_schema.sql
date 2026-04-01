@@ -151,6 +151,7 @@ CREATE TABLE IF NOT EXISTS profiles (
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Users can read own profile" ON profiles;
+DROP POLICY IF EXISTS "Public read profiles" ON profiles;
 CREATE POLICY "Public read profiles"
   ON profiles FOR SELECT USING (true);
 
@@ -223,6 +224,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_vh_cert_number ON vault_holdings(cert_numb
 ALTER TABLE vault_holdings ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "Public read vault_holdings" ON vault_holdings;
+DROP POLICY IF EXISTS "Users can update own vault_holdings" ON vault_holdings;
+DROP POLICY IF EXISTS "Users can insert own vault_holdings" ON vault_holdings;
 
 CREATE POLICY "Public read vault_holdings"
   ON vault_holdings FOR SELECT USING (true);

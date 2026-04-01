@@ -493,8 +493,11 @@ function HoldingRow({
             PSA {holding.grade}
           </span>
         </div>
-        <p className="mt-[3px] text-[12px]" style={{ color: isGain ? colors.green : colors.red }}>
-          {isGain ? "+" : ""}{formatCurrency(gainLoss)} ({isGain ? "+" : ""}{gainPct.toFixed(2)}%)
+        <p className="mt-[3px] text-[12px] font-semibold" style={{ color: asset.change >= 0 ? colors.green : colors.red }}>
+          {asset.change >= 0 ? "+" : ""}{asset.changePct.toFixed(2)}% 7D
+        </p>
+        <p className="mt-[2px] text-[11px] tabular-nums" style={{ color: colors.textMuted }}>
+          vs cost {isGain ? "+" : ""}{formatCurrency(gainLoss)} ({isGain ? "+" : ""}{gainPct.toFixed(2)}%)
         </p>
       </div>
 
@@ -513,7 +516,7 @@ function HoldingRow({
           {formatCurrency(asset.price, { compact: true })}
         </p>
         <p className="mt-[2px] tabular-nums text-[11px]" style={{ color: asset.change >= 0 ? colors.green : colors.red }}>
-          {asset.change >= 0 ? "+" : ""}{asset.changePct.toFixed(2)}% today
+          {asset.change >= 0 ? "+" : ""}{asset.changePct.toFixed(2)}% 7D
         </p>
       </div>
 
@@ -612,7 +615,7 @@ function MarketRow({
           {formatCurrency(asset.price, { compact: true })}
         </p>
         <p className="mt-[2px] tabular-nums text-[11px] font-semibold" style={{ color: isUp ? colors.green : colors.red }}>
-          {isUp ? "+" : ""}{asset.changePct.toFixed(2)}%
+          {isUp ? "+" : ""}{asset.changePct.toFixed(2)}% 7D
         </p>
       </div>
 
@@ -728,7 +731,7 @@ export function SimpleView({ assets, sparklines, flashMap, onRequestSignIn, show
           {formatCurrency(totalValue)}
         </p>
         <p className="mt-2 text-[14px] font-medium" style={{ color: isDayUp ? colors.green : colors.red }}>
-          {isDayUp ? "+" : ""}{formatCurrency(dayGain)} ({isDayUp ? "+" : ""}{dayGainPct.toFixed(2)}%) today
+          {isDayUp ? "+" : ""}{formatCurrency(dayGain)} ({isDayUp ? "+" : ""}{dayGainPct.toFixed(2)}%) 7D (holdings)
         </p>
         {!isAuthenticated && (
           <button

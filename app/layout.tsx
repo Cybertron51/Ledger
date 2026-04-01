@@ -27,6 +27,7 @@ import { Providers } from "@/components/providers/Providers";
 import { layout } from "@/lib/theme";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { mapDBCardToAssetData } from "@/lib/market-data";
+import { batchSevenDayChangeFromTrades } from "@/lib/market-history-server";
 
 // ─────────────────────────────────────────────────────────
 // Metadata
@@ -75,14 +76,22 @@ export default async function RootLayout({
       .limit(12);
 
     if (dbCards && dbCards.length > 0) {
+      const metrics = await batchSevenDayChangeFromTrades(
+        supabaseAdmin,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        dbCards.map((c: any) => ({ id: c.id, symbol: c.symbol }))
+      );
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       tickerItems = dbCards.map((c: any) => {
         const p = Array.isArray(c.prices) ? c.prices[0] : c.prices;
+        const m = metrics.get(c.id);
         return mapDBCardToAssetData({
           ...c,
           price: p?.price ?? 0,
           change_24h: p?.change_24h ?? 0,
           change_pct_24h: p?.change_pct_24h ?? 0,
+          change_7d: m?.change_7d ?? 0,
+          change_pct_7d: m?.change_pct_7d ?? 0,
           high_24h: p?.high_24h ?? null,
           low_24h: p?.low_24h ?? null,
           volume_24h: p?.volume_24h ?? 0,

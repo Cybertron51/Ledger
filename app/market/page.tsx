@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
  *   and the equivalent top-right corner in simple mode.
  */
 
-import { useState, useEffect, useMemo, Suspense } from "react";
+import { useState, useEffect, useMemo, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { TrendingUp, TrendingDown, Zap, LayoutGrid, BarChart2, Filter, Menu, X, ChevronDown, ChevronUp } from "lucide-react";
 import { SignInModal } from "@/components/auth/SignInModal";
@@ -21,6 +21,7 @@ import { SimpleView } from "@/components/market/SimpleView";
 import {
   generateHistory,
   generateSparkline,
+  recomputeAssetChangeForNewPrice,
   tickPrice,
   type AssetData,
   type TimeRange,
@@ -80,7 +81,7 @@ function MarketPageContent() {
   const [assets, setAssets] = useState<AssetData[]>([]);
   const [selectedSymbol, setSelectedSymbol] = useState<string>("");
   const [isLoading, setIsLoading] = useState(true);
-  const [range, setRange] = useState<TimeRange>("1D");
+  const [range, setRange] = useState<TimeRange>("1W");
   const [flashMap, setFlashMap] = useState<Record<string, "up" | "down">>({});
   const [showSignIn, setShowSignIn] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("simple");
@@ -141,7 +142,9 @@ function MarketPageContent() {
     return result;
   }, [assets, showNonTradable, categoryFilter, priceRange, minVolume]);
 
-  const selected = visibleAssets.find((a) => a.symbol === selectedSymbol) ?? visibleAssets[0] ?? null;
+  /** Resolve from full catalog so portfolio picks still match detail when the card is filtered out of the visible list. */
+  const selected =
+    assets.find((a) => a.symbol === selectedSymbol) ?? visibleAssets[0] ?? null;
   const isUp = selected ? selected.change >= 0 : false;
 
   // ── Initial load from Supabase ─────────────────────────
@@ -213,8 +216,6 @@ function MarketPageContent() {
           (payload) => {
             if (!isMounted) return;
             const newPrice = payload.new.price;
-            const newChange = payload.new.change_24h;
-            const newPct = payload.new.change_pct_24h;
             const cardId = payload.new.card_id;
 
             setAssets((prev) => {
@@ -238,11 +239,13 @@ function MarketPageContent() {
                 }, 500);
               }
 
+              const { change, changePct } = recomputeAssetChangeForNewPrice(oldAsset, newPrice);
+
               next[idx] = {
                 ...oldAsset,
                 price: newPrice,
-                change: newChange,
-                changePct: newPct,
+                change,
+                changePct,
               };
 
               return next;
@@ -273,11 +276,10 @@ function MarketPageContent() {
     if (!selected) return;
 
     let isMounted = true;
-    const days = range === "1D" ? 1 : range === "1W" ? 7 : range === "1M" ? 30 : range === "3M" ? 90 : 365;
 
     async function fetchHistory() {
       const { getPriceHistory } = await import("@/lib/db/cards");
-      const history = await getPriceHistory(selected!.id, days);
+      const history = await getPriceHistory(selected!.id, range);
 
       if (!isMounted) return;
 
@@ -299,15 +301,67 @@ function MarketPageContent() {
     return () => { isMounted = false; };
   }, [selected?.id, range]);
 
-  // ── Sparklines (generated once) ────────────────────────
-  const sparklines = useMemo(
-    () =>
-      Object.fromEntries(
-        assets.map((a) => [a.symbol, generateSparkline(a.price, a.changePct, a.symbol)])
-      ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [assets.length]
-  );
+  /** Match chart fill/stroke to the loaded series (same window as range pills), not only 7D sign. */
+  const chartIsUp = useMemo(() => {
+    if (chartData.length >= 2) {
+      const first = chartData[0]!.price;
+      const last = chartData[chartData.length - 1]!.price;
+      return last >= first;
+    }
+    return selected ? selected.change >= 0 : false;
+  }, [chartData, selected]);
+
+  // ── Sparklines from trade + history batch (fallback: flat synthetic) ──
+  const [sparklines, setSparklines] = useState<Record<string, PricePoint[]>>({});
+  const assetIdsKey = useMemo(() => [...assets.map((a) => a.id)].sort().join(","), [assets]);
+  const assetsRef = useRef(assets);
+  assetsRef.current = assets;
+
+  useEffect(() => {
+    if (!assetIdsKey) {
+      setSparklines({});
+      return;
+    }
+    const snap = assetsRef.current;
+    if (snap.length === 0) {
+      setSparklines({});
+      return;
+    }
+    let alive = true;
+
+    (async () => {
+      try {
+        const { apiGet } = await import("@/lib/api");
+        const ids = snap.map((a) => a.id).join(",");
+        const batch = await apiGet<Record<string, { recorded_at: string; price: number }[]>>(
+          `/api/market/history/batch?cardIds=${encodeURIComponent(ids)}&sparkline=1`
+        );
+        if (!alive) return;
+        const next: Record<string, PricePoint[]> = {};
+        for (const a of snap) {
+          const rows = batch[a.id];
+          if (rows && rows.length >= 2) {
+            next[a.symbol] = rows.map((r) => ({
+              time: new Date(r.recorded_at).getTime(),
+              price: r.price,
+            }));
+          } else {
+            next[a.symbol] = generateSparkline(a.price, a.changePct, a.symbol);
+          }
+        }
+        setSparklines(next);
+      } catch {
+        if (!alive) return;
+        setSparklines(
+          Object.fromEntries(snap.map((a) => [a.symbol, generateSparkline(a.price, a.changePct, a.symbol)]))
+        );
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [assetIdsKey]);
 
   // ── Order book ─────────────────────────────────────────
   const [orderBook, setOrderBook] = useState<OrderBookData | null>(null);
@@ -527,10 +581,12 @@ function MarketPageContent() {
               {portfolioOpen && holdings.map((h) => {
                 const asset = assets.find((a) => a.symbol === h.symbol);
                 if (!asset) return null;
-                const gain = asset.price - h.acquisitionPrice;
-                const gainPct = (gain / h.acquisitionPrice) * 100;
-                const isG = gain >= 0;
+                const assetUp = asset.change >= 0;
                 const isSel = h.symbol === selectedSymbol;
+                const flash = flashMap[h.symbol];
+                const gain = asset.price - h.acquisitionPrice;
+                const gainPct = h.acquisitionPrice > 0 ? (gain / h.acquisitionPrice) * 100 : 0;
+                const isG = gain >= 0;
                 return (
                   <button
                     key={h.id}
@@ -542,24 +598,38 @@ function MarketPageContent() {
                       borderLeft: `2px solid ${isSel ? colors.green : "transparent"}`,
                       paddingLeft: isSel ? 10 : 12,
                       paddingRight: 12,
-                      paddingTop: 8,
-                      paddingBottom: 8,
+                      paddingTop: 10,
+                      paddingBottom: 10,
                     }}
                   >
-                    <p className="truncate text-[12px] font-semibold leading-snug" style={{ color: colors.textPrimary }}>
-                      {h.name}
-                    </p>
-                    <div className="mt-[2px] flex items-center gap-[6px]">
-                      <span className="text-[10px] uppercase tracking-wider" style={{ color: colors.textMuted }}>
-                        PSA {h.grade}
-                      </span>
+                    <div className="flex items-start justify-between gap-1">
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-[12px] font-semibold leading-snug" style={{ color: colors.textPrimary }}>
+                          {h.name}
+                        </p>
+                        <div className="mt-[2px] flex items-center gap-[6px]">
+                          <span className="text-[10px] uppercase tracking-wider" style={{ color: colors.textMuted }}>
+                            PSA {h.grade}
+                          </span>
+                        </div>
+                        <p className="mt-[2px] text-[9px] font-semibold tabular-nums" style={{ color: colors.textMuted }}>
+                          {isG ? "+" : ""}{gainPct.toFixed(1)}% vs cost
+                        </p>
+                      </div>
+                      <SparklineChart data={sparklines[h.symbol] ?? []} isUp={assetUp} width={56} height={26} />
                     </div>
-                    <div className="mt-[4px] flex items-center justify-between">
-                      <span className="tabular-nums text-[13px] font-bold" style={{ color: colors.textPrimary }}>
+                    <div className="mt-[6px] flex items-center justify-between">
+                      <span
+                        className="tabular-nums text-[13px] font-bold"
+                        style={{
+                          color: flash ? (flash === "up" ? colors.green : colors.red) : colors.textPrimary,
+                          transition: "color 0.35s ease",
+                        }}
+                      >
                         {formatCurrency(asset.price)}
                       </span>
-                      <span className="tabular-nums text-[11px] font-semibold" style={{ color: isG ? colors.green : colors.red }}>
-                        {isG ? "+" : ""}{gainPct.toFixed(1)}%
+                      <span className="tabular-nums text-[11px] font-semibold" style={{ color: assetUp ? colors.green : colors.red }}>
+                        {assetUp ? "+" : ""}{asset.changePct.toFixed(2)}% 7D
                       </span>
                     </div>
                   </button>
@@ -620,7 +690,7 @@ function MarketPageContent() {
                     {formatCurrency(asset.price)}
                   </span>
                   <span className="tabular-nums text-[11px] font-semibold" style={{ color: assetUp ? colors.green : colors.red }}>
-                    {assetUp ? "+" : ""}{asset.changePct.toFixed(2)}%
+                    {assetUp ? "+" : ""}{asset.changePct.toFixed(2)}% 7D
                   </span>
                 </div>
               </button>
@@ -694,7 +764,7 @@ function MarketPageContent() {
                       : <TrendingDown size={13} strokeWidth={2.5} style={{ color: colors.red }} />
                     }
                     <span className="tabular-nums text-[13px] font-semibold" style={{ color: isUp ? colors.green : colors.red }}>
-                      {isUp ? "+" : ""}{formatCurrency(selected.change)} ({isUp ? "+" : ""}{selected.changePct.toFixed(2)}%)
+                      {isUp ? "+" : ""}{formatCurrency(selected.change)} ({isUp ? "+" : ""}{selected.changePct.toFixed(2)}% 7D)
                     </span>
                   </div>
                 </div>
@@ -783,7 +853,7 @@ function MarketPageContent() {
                     })()}
                   </div>
                 ) : (
-                  <PriceChart data={chartData} isUp={isUp} range={range} onRangeChange={setRange} />
+                  <PriceChart data={chartData} isUp={chartIsUp} range={range} onRangeChange={setRange} />
                 )}
               </div>
 

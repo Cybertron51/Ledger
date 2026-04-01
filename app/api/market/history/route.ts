@@ -1,35 +1,47 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { buildCardMarketHistory, buildSymbolTradeHistory } from "@/lib/market-history-server";
+import type { TimeRange } from "@/lib/chart-series";
+
+const RANGES: TimeRange[] = ["1D", "1W", "1M", "3M", "1Y"];
+
+function parseRange(param: string | null, daysFallback: number): TimeRange {
+  if (param && (RANGES as string[]).includes(param)) {
+    return param as TimeRange;
+  }
+  if (daysFallback <= 1) return "1D";
+  if (daysFallback <= 7) return "1W";
+  if (daysFallback <= 30) return "1M";
+  if (daysFallback <= 90) return "3M";
+  return "1Y";
+}
 
 /**
- * GET /api/market/history?cardId=xxx&days=30
- * Returns price history for a card over a given number of days.
+ * GET /api/market/history?cardId=xxx&range=1M
+ * GET /api/market/history?symbol=XXX&range=1M
+ * Optional legacy: &days=30 (mapped to nearest range).
+ *
+ * Series is built from **trades** for that symbol (forward-filled buckets). Catalog `prices` sets the level when there are no prints.
  */
 export async function GET(req: NextRequest) {
-    if (!supabaseAdmin) {
-        return NextResponse.json({ error: "Database not configured" }, { status: 503 });
-    }
+  if (!supabaseAdmin) {
+    return NextResponse.json({ error: "Database not configured" }, { status: 503 });
+  }
 
-    const { searchParams } = new URL(req.url);
-    const cardId = searchParams.get("cardId");
-    const days = parseInt(searchParams.get("days") || "30");
+  const { searchParams } = new URL(req.url);
+  const cardId = searchParams.get("cardId");
+  const symbol = searchParams.get("symbol")?.trim();
+  const rangeParam = searchParams.get("range");
+  const days = parseInt(searchParams.get("days") || "30", 10);
+  const range = parseRange(rangeParam, Number.isFinite(days) ? days : 30);
 
-    if (!cardId) {
-        return NextResponse.json({ error: "cardId is required" }, { status: 400 });
-    }
+  if (!cardId && !symbol) {
+    return NextResponse.json({ error: "cardId or symbol is required" }, { status: 400 });
+  }
 
-    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const rows = cardId
+    ? await buildCardMarketHistory(supabaseAdmin, cardId, range)
+    : await buildSymbolTradeHistory(supabaseAdmin, symbol!, range);
 
-    const { data, error } = await supabaseAdmin
-        .from("price_history")
-        .select("recorded_at, price")
-        .eq("card_id", cardId)
-        .gte("recorded_at", since)
-        .order("recorded_at", { ascending: true });
-
-    if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
-    }
-
-    return NextResponse.json(data ?? []);
+  return NextResponse.json(rows);
 }

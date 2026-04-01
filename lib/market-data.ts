@@ -28,16 +28,31 @@ export interface AssetData {
 }
 
 import type { DBCard } from "./db/cards";
+import { RANGE_CONFIGS, SPARKLINE, type TimeRange } from "./chart-series";
+
+export type { TimeRange } from "./chart-series";
+
+/** Keep 7D change in sync when only `price` updates (e.g. realtime). Baseline = price at last full compute. */
+export function recomputeAssetChangeForNewPrice(
+  asset: Pick<AssetData, "price" | "change">,
+  newPrice: number
+): { change: number; changePct: number } {
+  const baseline = asset.price - asset.change;
+  const change = newPrice - baseline;
+  const changePct = baseline > 0 ? (change / baseline) * 100 : 0;
+  return { change, changePct };
+}
 
 export function mapDBCardToAssetData(c: DBCard): AssetData {
+  const has7d = "change_7d" in c && "change_pct_7d" in c;
   return {
     id: c.id,
     name: c.name,
     symbol: c.symbol,
     grade: c.psa_grade,
     price: c.price,
-    change: c.change_24h,
-    changePct: c.change_pct_24h,
+    change: has7d ? c.change_7d! : c.change_24h,
+    changePct: has7d ? c.change_pct_7d! : c.change_pct_24h,
     set: c.set_name,
     volume24h: c.volume_24h,
     high24h: c.high_24h ?? c.price,
@@ -68,10 +83,8 @@ export interface OrderBook {
   spreadPct: number;
 }
 
-export type TimeRange = "1D" | "1W" | "1M" | "3M" | "1Y";
-
 // ─────────────────────────────────────────────────────────
-// Seeded RNG — deterministic charts per symbol
+// Seeded RNG — deterministic charts per symbol (portfolio fallbacks)
 // ─────────────────────────────────────────────────────────
 
 function symbolSeed(str: string): number {
@@ -89,16 +102,8 @@ function makeRng(seed: number) {
 }
 
 // ─────────────────────────────────────────────────────────
-// History generator — OHLCV-inspired price series
+// History generator — synthetic fallback when no API series
 // ─────────────────────────────────────────────────────────
-
-const RANGE_CONFIGS: Record<TimeRange, { bars: number; intervalMs: number }> = {
-  "1D": { bars: 48, intervalMs: 30 * 60 * 1000 },           // 30-min bars
-  "1W": { bars: 84, intervalMs: 2 * 60 * 60 * 1000 },       // 2-hr bars
-  "1M": { bars: 60, intervalMs: 12 * 60 * 60 * 1000 },      // 12-hr bars
-  "3M": { bars: 90, intervalMs: 24 * 60 * 60 * 1000 },      // daily
-  "1Y": { bars: 52, intervalMs: 7 * 24 * 60 * 60 * 1000 },  // weekly
-};
 
 export function generateHistory(
   price: number,
@@ -106,8 +111,7 @@ export function generateHistory(
   range: TimeRange,
   symbol: string
 ): PricePoint[] {
-  // Temporary behavior: just generate a flat line at the current price
-  // until we wire up the real `price_history` database table.
+  // Fallback: flat line when trade-driven APIs are unavailable (e.g. offline).
   const now = Date.now();
   const { bars, intervalMs } = RANGE_CONFIGS[range];
   const points: PricePoint[] = [];
@@ -129,13 +133,12 @@ export function generateSparkline(
   changePct: number,
   symbol: string
 ): PricePoint[] {
-  // Temporary behavior: just generate a flat line at the current price
-  // to remove hallucinatory noise.
   const now = Date.now();
   const points: PricePoint[] = [];
+  const { bars, intervalMs } = SPARKLINE;
 
-  for (let i = 0; i < 20; i++) {
-    const time = now - (19 - i) * 60 * 60 * 1000;
+  for (let i = 0; i < bars; i++) {
+    const time = now - (bars - 1 - i) * intervalMs;
     points.push({ time, price });
   }
 

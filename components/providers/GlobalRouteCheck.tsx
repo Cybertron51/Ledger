@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { isAdminEmail } from "@/lib/admin";
 
 // Routes that don't require onboarding
 const PUBLIC_ROUTES = [
@@ -28,8 +29,11 @@ export function GlobalRouteCheck({ children }: { children: React.ReactNode }) {
 
     const isAllowedRoute = PUBLIC_ROUTES.includes(pathname || "");
     const needsOnboarding = Boolean(
-        isAuthenticated && user && !user.isAdmin &&
-        (!user.referralCodeId || !isProfileComplete)
+        isAuthenticated &&
+            user &&
+            !user.isAdmin &&
+            !isAdminEmail(user.email) &&
+            (!user.referralCodeId || !isProfileComplete)
     );
 
     useEffect(() => {
