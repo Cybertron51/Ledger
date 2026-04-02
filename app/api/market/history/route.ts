@@ -21,7 +21,7 @@ function parseRange(param: string | null, daysFallback: number): TimeRange {
  * GET /api/market/history?symbol=XXX&range=1M
  * Optional legacy: &days=30 (mapped to nearest range).
  *
- * Series is built from **trades** for that symbol (forward-filled buckets). Catalog `prices` sets the level when there are no prints.
+ * Series is built from **trades** plus **`price_history`** for that card (when `cardId` is used), merged into buckets. Catalog `prices` anchors the last bucket.
  */
 export async function GET(req: NextRequest) {
   if (!supabaseAdmin) {

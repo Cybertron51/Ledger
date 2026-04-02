@@ -1,5 +1,6 @@
 /**
- * Server-only: bucketed price charts from **trades only** (per symbol). Catalog `prices` is anchor / pre-window level.
+ * Server-only: bucketed price charts from **trades** plus **`price_history`** (same card) when `cardId` is known.
+ * Catalog `prices` is anchor / pre-window level. Trade points override history at the same timestamp.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -13,6 +14,49 @@ import {
   type MarketChartShapeRange,
   type TimeRange,
 } from "@/lib/chart-series";
+
+/** Trade prints win over catalog history when both exist at the same epoch ms. */
+function mergeTradeAndHistoryPoints(
+  tradePts: { t: number; price: number }[],
+  historyPts: { t: number; price: number }[]
+): { t: number; price: number }[] {
+  const byT = new Map<number, number>();
+  for (const p of historyPts) byT.set(p.t, p.price);
+  for (const p of tradePts) byT.set(p.t, p.price);
+  return [...byT.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([t, price]) => ({ t, price }));
+}
+
+function groupHistoryRowsByCard(
+  rows: { card_id: string; price: unknown; recorded_at: string }[] | null
+): Map<string, { t: number; price: number }[]> {
+  const m = new Map<string, { t: number; price: number }[]>();
+  for (const r of rows ?? []) {
+    const cid = r.card_id as string;
+    const arr = m.get(cid) ?? [];
+    arr.push({ t: new Date(r.recorded_at).getTime(), price: Number(r.price) });
+    m.set(cid, arr);
+  }
+  for (const arr of m.values()) arr.sort((a, b) => a.t - b.t);
+  return m;
+}
+
+/** Latest price per card in a row set (caller filters `recorded_at` as needed). */
+function latestPricePerCardFromHistoryRows(
+  rows: { card_id: string; price: unknown; recorded_at: string }[] | null
+): Map<string, number> {
+  const best = new Map<string, { t: number; p: number }>();
+  for (const r of rows ?? []) {
+    const cid = r.card_id as string;
+    const t = new Date(r.recorded_at).getTime();
+    const prev = best.get(cid);
+    if (!prev || t > prev.t) best.set(cid, { t, p: Number(r.price) });
+  }
+  const out = new Map<string, number>();
+  for (const [cid, v] of best) out.set(cid, v.p);
+  return out;
+}
 
 export interface HistoryRow {
   recorded_at: string;
@@ -69,6 +113,27 @@ export async function batchSevenDayChangeFromTrades(
     .order("executed_at", { ascending: true })
     .limit(20000);
 
+  const [{ data: histInWindow }, { data: histBeforeWindow }] = await Promise.all([
+    admin
+      .from("price_history")
+      .select("card_id, price, recorded_at")
+      .in("card_id", cardIds)
+      .gte("recorded_at", sinceIso)
+      .order("recorded_at", { ascending: true })
+      .limit(100_000),
+    admin
+      .from("price_history")
+      .select("card_id, price, recorded_at")
+      .in("card_id", cardIds)
+      .lt("recorded_at", sinceIso)
+      .limit(100_000),
+  ]);
+
+  const historyInByCard = groupHistoryRowsByCard(histInWindow as { card_id: string; price: unknown; recorded_at: string }[] | null);
+  const priorHistoryPriceByCard = latestPricePerCardFromHistoryRows(
+    histBeforeWindow as { card_id: string; price: unknown; recorded_at: string }[] | null
+  );
+
   const priorTradeBySymbol = new Map<string, number | null>();
   const anchorBySymbol = new Map<string, number>();
 
@@ -113,11 +178,16 @@ export async function batchSevenDayChangeFromTrades(
     const sym = card.symbol as string;
     const anchorPrice = priceByCard.get(id) ?? anchorBySymbol.get(sym) ?? 1;
     const rawPts = tradesBySymbol.get(sym) ?? [];
-    const tradePts = rawPts.map((p) => ({
+    const histPts = historyInByCard.get(id) ?? [];
+    const mergedRaw = mergeTradeAndHistoryPoints(rawPts, histPts);
+    const tradePts = mergedRaw.map((p) => ({
       t: p.t,
       price: clampPriceToAnchorBand(p.price, anchorPrice),
     }));
-    const startPrice = clampPriceToAnchorBand(priorTradeBySymbol.get(sym) ?? anchorPrice, anchorPrice);
+    const priorTrade = priorTradeBySymbol.get(sym);
+    const priorHist = priorHistoryPriceByCard.get(id) ?? null;
+    const startRef = priorTrade ?? priorHist ?? anchorPrice;
+    const startPrice = clampPriceToAnchorBand(startRef, anchorPrice);
 
     let series = buildTradeBucketedSeries(tradePts, anchorPrice, startPrice, bars, intervalMs, nowMs);
     series = anchorSeriesTerminalToCatalog(series, anchorPrice);
@@ -175,10 +245,22 @@ export async function buildSymbolTradeHistory(
     .order("executed_at", { ascending: false })
     .limit(1);
 
-  const startPrice = clampPriceToAnchorBand(
-    priorTrade?.[0] != null ? Number((priorTrade[0] as { price: unknown }).price) : anchorPrice,
-    anchorPrice
-  );
+  let priorHistPrice: number | null = null;
+  if (options?.cardId) {
+    const { data: priorH } = await admin
+      .from("price_history")
+      .select("price, recorded_at")
+      .eq("card_id", options.cardId)
+      .lt("recorded_at", sinceIso)
+      .order("recorded_at", { ascending: false })
+      .limit(1);
+    const row = priorH?.[0] as { price: unknown } | undefined;
+    if (row != null) priorHistPrice = Number(row.price);
+  }
+
+  const priorTradePx = priorTrade?.[0] != null ? Number((priorTrade[0] as { price: unknown }).price) : null;
+  const startRef = priorTradePx ?? priorHistPrice ?? anchorPrice;
+  const startPrice = clampPriceToAnchorBand(startRef, anchorPrice);
 
   const { data: tradeRows } = await admin
     .from("trades")
@@ -188,9 +270,29 @@ export async function buildSymbolTradeHistory(
     .order("executed_at", { ascending: true })
     .limit(8000);
 
-  const tradePts = (tradeRows ?? []).map((r) => ({
+  const tradePtsOnly = (tradeRows ?? []).map((r) => ({
     t: new Date(String(r.executed_at)).getTime(),
     price: clampPriceToAnchorBand(Number(r.price), anchorPrice),
+  }));
+
+  let historyPts: { t: number; price: number }[] = [];
+  if (options?.cardId) {
+    const { data: histRows } = await admin
+      .from("price_history")
+      .select("price, recorded_at")
+      .eq("card_id", options.cardId)
+      .gte("recorded_at", sinceIso)
+      .order("recorded_at", { ascending: true })
+      .limit(8000);
+    historyPts = (histRows ?? []).map((r) => ({
+      t: new Date(String((r as { recorded_at: string }).recorded_at)).getTime(),
+      price: clampPriceToAnchorBand(Number((r as { price: unknown }).price), anchorPrice),
+    }));
+  }
+
+  const tradePts = mergeTradeAndHistoryPoints(tradePtsOnly, historyPts).map((p) => ({
+    t: p.t,
+    price: clampPriceToAnchorBand(p.price, anchorPrice),
   }));
 
   let series = buildTradeBucketedSeries(tradePts, anchorPrice, startPrice, bars, intervalMs, nowMs);
@@ -263,6 +365,29 @@ export async function buildBatchMarketHistory(
     .order("executed_at", { ascending: true })
     .limit(20000);
 
+  const [{ data: histInWindowBatch }, { data: histBeforeWindowBatch }] = await Promise.all([
+    admin
+      .from("price_history")
+      .select("card_id, price, recorded_at")
+      .in("card_id", cardIds)
+      .gte("recorded_at", sinceIso)
+      .order("recorded_at", { ascending: true })
+      .limit(100_000),
+    admin
+      .from("price_history")
+      .select("card_id, price, recorded_at")
+      .in("card_id", cardIds)
+      .lt("recorded_at", sinceIso)
+      .limit(100_000),
+  ]);
+
+  const historyInByCardBatch = groupHistoryRowsByCard(
+    histInWindowBatch as { card_id: string; price: unknown; recorded_at: string }[] | null
+  );
+  const priorHistoryPriceByCardBatch = latestPricePerCardFromHistoryRows(
+    histBeforeWindowBatch as { card_id: string; price: unknown; recorded_at: string }[] | null
+  );
+
   const priorTradeBySymbol = new Map<string, number | null>();
   const anchorBySymbol = new Map<string, number>();
 
@@ -307,11 +432,15 @@ export async function buildBatchMarketHistory(
     const sym = card.symbol as string;
     const anchorPrice = priceByCard.get(id) ?? anchorBySymbol.get(sym) ?? (await anchorPriceForSymbol(admin, sym));
     const rawPts = tradesBySymbol.get(sym) ?? [];
-    const tradePts = rawPts.map((p) => ({
+    const histPts = historyInByCardBatch.get(id) ?? [];
+    const mergedRaw = mergeTradeAndHistoryPoints(rawPts, histPts);
+    const tradePts = mergedRaw.map((p) => ({
       t: p.t,
       price: clampPriceToAnchorBand(p.price, anchorPrice),
     }));
-    const startPrice = clampPriceToAnchorBand(priorTradeBySymbol.get(sym) ?? anchorPrice, anchorPrice);
+    const priorHistPx = priorHistoryPriceByCardBatch.get(id) ?? null;
+    const startRef = priorTradeBySymbol.get(sym) ?? priorHistPx ?? anchorPrice;
+    const startPrice = clampPriceToAnchorBand(startRef, anchorPrice);
 
     let series = buildTradeBucketedSeries(tradePts, anchorPrice, startPrice, bars, intervalMs, nowMs);
     series = anchorSeriesTerminalToCatalog(series, anchorPrice);

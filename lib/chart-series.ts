@@ -4,16 +4,21 @@
 
 export type TimeRange = "1D" | "1W" | "1M" | "3M" | "1Y";
 
+const ONE_DAY_MS = 86_400_000;
+const ONE_HOUR_MS = 3_600_000;
+
 export const RANGE_CONFIGS: Record<TimeRange, { bars: number; intervalMs: number }> = {
+  /** 96 pts / 24h (~15m) */
   "1D": { bars: 96, intervalMs: 15 * 60 * 1000 },
-  "1W": { bars: 84, intervalMs: 2 * 60 * 60 * 1000 },
+  /** 169 pts / 7d (hourly): more samples than 1D so the week reads as denser history */
+  "1W": { bars: 169, intervalMs: ONE_HOUR_MS },
   "1M": { bars: 60, intervalMs: 12 * 60 * 60 * 1000 },
   "3M": { bars: 90, intervalMs: 24 * 60 * 60 * 1000 },
   "1Y": { bars: 52, intervalMs: 7 * 24 * 60 * 60 * 1000 },
 };
 
 /** Match prior mock sparkline density (~20 hourly samples). */
-export const SPARKLINE = { bars: 20, intervalMs: 60 * 60 * 1000 };
+export const SPARKLINE = { bars: 20, intervalMs: ONE_HOUR_MS };
 
 export interface ChartPoint {
   time: number;
@@ -29,9 +34,6 @@ export function clampPriceToAnchorBand(price: number, anchor: number): number {
   const hi = anchor * (1 + TRADE_DEVIATION_CLAMP);
   return Math.max(lo, Math.min(hi, price));
 }
-
-const ONE_DAY_MS = 86_400_000;
-const ONE_HOUR_MS = 3_600_000;
 
 /** Bars at this resolution or finer get stepped intraday path */
 export const INTRADAY_MAX_BAR_MS = 3 * ONE_HOUR_MS;
