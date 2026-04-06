@@ -101,7 +101,7 @@ function MarketPageContent() {
   const [categoryFilter, setCategoryFilter] = useState<"all" | "pokemon" | "sports" | "mtg">("all");
   const [dashboardTab, setDashboardTab] = useState<"image" | "chart">("image");
   const [activeMarketImageIndex, setActiveMarketImageIndex] = useState(0);
-  const [portfolioOpen, setPortfolioOpen] = useState(true);
+  const [portfolioOpen, setPortfolioOpen] = useState(false);
   const [priceRange, setPriceRange] = useState<[number, number] | null>(null);
   const [minVolume, setMinVolume] = useState<number>(0);
 
