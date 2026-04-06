@@ -951,7 +951,7 @@ export function SimpleView({
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value as typeof categoryFilter)}
-              className="w-full min-w-0 rounded-[8px] px-2 py-[7px] text-[11px] font-semibold outline-none cursor-pointer"
+              className="w-full min-w-0 rounded-[8px] px-2 py-[7px] text-[11px] font-semibold tracking-tight outline-none cursor-pointer"
               style={{
                 background: colors.surface,
                 color: categoryFilter === "all" ? colors.textMuted : colors.green,
@@ -963,7 +963,7 @@ export function SimpleView({
                 paddingRight: 26,
               }}
             >
-              <option value="all">All Categories</option>
+              <option value="all">All</option>
               <option value="pokemon">Pokémon</option>
               <option value="sports">Sports</option>
               <option value="mtg">MTG</option>

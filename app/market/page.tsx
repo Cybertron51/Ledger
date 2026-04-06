@@ -619,7 +619,7 @@ function MarketPageContent() {
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value as typeof categoryFilter)}
-              className="w-full min-w-0 rounded-[8px] px-2 py-[7px] text-[10px] font-bold uppercase tracking-widest outline-none cursor-pointer"
+              className="w-full min-w-0 rounded-[8px] px-2 py-[7px] text-[9px] font-bold uppercase tracking-wide outline-none cursor-pointer"
               style={{
                 background: colors.surface,
                 color: categoryFilter === "all" ? colors.textMuted : colors.green,
@@ -631,7 +631,7 @@ function MarketPageContent() {
                 paddingRight: 26,
               }}
             >
-              <option value="all">All Categories</option>
+              <option value="all">All</option>
               <option value="pokemon">Pokémon</option>
               <option value="sports">Sports</option>
               <option value="mtg">MTG</option>

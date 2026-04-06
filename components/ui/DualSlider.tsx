@@ -125,10 +125,23 @@ export function DualSlider({ min, max, value, onChange, formatLabel = (v) => v.t
     }, [handlePointerMove, handlePointerUp]);
 
     return (
-        <div className="relative w-full pb-4 pt-1 flex flex-col justify-center px-2 select-none">
-            <div className="flex justify-between items-center mb-[18px] px-1">
-                <span className="text-[10px] font-bold" style={{ color: colors.textMuted }}>{formatLabel(value[0])}</span>
-                <span className="text-[10px] font-bold" style={{ color: colors.textMuted }}>{formatLabel(value[1])}</span>
+        <div className="relative w-full min-w-0 pb-4 pt-1 flex flex-col justify-center px-1 select-none">
+            <div className="mb-[18px] flex min-w-0 items-center gap-1.5 px-0.5">
+                <span
+                    className="min-w-0 flex-1 truncate text-left text-[9px] font-bold tabular-nums leading-tight"
+                    style={{ color: colors.textMuted }}
+                >
+                    {formatLabel(value[0])}
+                </span>
+                <span className="shrink-0 text-[9px] font-bold opacity-40" style={{ color: colors.textMuted }} aria-hidden="true">
+                    –
+                </span>
+                <span
+                    className="min-w-0 flex-1 truncate text-right text-[9px] font-bold tabular-nums leading-tight"
+                    style={{ color: colors.textMuted }}
+                >
+                    {formatLabel(value[1])}
+                </span>
             </div>
             <div
                 ref={trackRef}
