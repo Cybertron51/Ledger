@@ -14,7 +14,7 @@ import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Search, ChevronRight, CheckCircle, Loader2, Lock, X, Filter, ChevronDown, ChevronUp } from "lucide-react";
 import { colors } from "@/lib/theme";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatCurrencyTight } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { VaultHolding } from "@/lib/vault-data";
@@ -979,7 +979,7 @@ export function SimpleView({
               max={maxPrice}
               value={activePriceRange}
               onChange={handlePriceRangeChange}
-              formatLabel={(v) => formatCurrency(v, { compact: true })}
+              formatLabel={(v) => formatCurrencyTight(v)}
             />
           </div>
           <div

@@ -127,13 +127,13 @@ export function DualSlider({ min, max, value, onChange, formatLabel = (v) => v.t
     return (
         <div className="relative flex w-full min-w-0 flex-col justify-center px-1 py-1 select-none">
             {/* Single centered line (truncate) so min/max never collide */}
-            <div className="mb-1.5 flex w-full min-w-0 justify-center px-0.5">
+            <div className="mb-1 flex w-full min-w-0 justify-center px-0">
                 <span
-                    className="block max-w-full truncate text-center text-[9px] font-bold tabular-nums leading-none"
+                    className="block max-w-full text-center text-[7px] font-semibold tabular-nums leading-tight tracking-tight text-balance"
                     style={{ color: colors.textMuted }}
                 >
                     {formatLabel(value[0])}
-                    <span aria-hidden="true" className="inline-block px-1 opacity-40">
+                    <span aria-hidden="true" className="inline-block px-0.5 opacity-40">
                         –
                     </span>
                     {formatLabel(value[1])}

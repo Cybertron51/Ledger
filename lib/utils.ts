@@ -31,6 +31,23 @@ export function formatCurrency(
   }).format(value);
 }
 
+/**
+ * Shorter currency strings for narrow UI (e.g. dual-range slider labels).
+ * Omits “.00” for whole dollars; uses compact notation (e.g. $1.2K) from $1,000 up.
+ */
+export function formatCurrencyTight(value: number): string {
+  if (Math.abs(value) >= 1000) {
+    return formatCurrency(value, { compact: true });
+  }
+  const cents = Math.round(Math.abs(value) * 100) % 100;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: cents === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 /** Format a price change with sign and percentage */
 export function formatChange(change: number, changePct: number): string {
   const sign = change >= 0 ? "+" : "";

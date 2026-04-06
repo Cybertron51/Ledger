@@ -38,7 +38,7 @@ import { OrderBook } from "@/components/market/OrderBook";
 import { TradePanel } from "@/components/market/TradePanel";
 import { usePortfolio } from "@/lib/portfolio-context";
 import { colors, layout } from "@/lib/theme";
-import { formatCurrency, cn } from "@/lib/utils";
+import { formatCurrency, formatCurrencyTight, cn } from "@/lib/utils";
 import {
   filterAdvancedVisibleAssets,
   resolveAdvancedSelectedAsset,
@@ -647,7 +647,7 @@ function MarketPageContent() {
               max={maxPrice}
               value={activePriceRange}
               onChange={setPriceRange}
-              formatLabel={(v) => formatCurrency(v, { compact: true })}
+              formatLabel={(v) => formatCurrencyTight(v)}
             />
           </div>
 
