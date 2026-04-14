@@ -143,6 +143,7 @@ export default function LandingPage() {
                             <input
                                 type="text"
                                 placeholder="REFERRAL CODE"
+                                aria-label="Referral Code"
                                 value={referralCode}
                                 onChange={(e) => {
                                     setReferralCode(e.target.value.toUpperCase());
@@ -239,7 +240,25 @@ export default function LandingPage() {
                             onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.03)"; e.currentTarget.style.background = "rgba(255,255,255,0.12)"; }}
                             onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; e.currentTarget.style.background = "rgba(255,255,255,0.07)"; }}
                         >
-                            Prefer to join the waitlist
+                            Join the Waitlist
+                        </button>
+
+                        <button
+                            onClick={() => setShowSignIn(true)}
+                            style={{
+                                background: "none",
+                                border: "none",
+                                color: "rgba(255,255,255,0.35)",
+                                fontSize: 13,
+                                cursor: "pointer",
+                                padding: "4px 0",
+                                fontWeight: 500,
+                                transition: "color 0.15s",
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.color = "rgba(255,255,255,0.7)"; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.color = "rgba(255,255,255,0.35)"; }}
+                        >
+                            Already have an account? Sign in
                         </button>
                     </div>
                 );
@@ -434,9 +453,21 @@ export default function LandingPage() {
                     textAlign: "center",
                 }}
             >
-                <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: colors.green, margin: "0 0 20px" }}>
-                    Zero-Fee Trading Card Exchange
-                </p>
+                <div style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "6px 14px",
+                    borderRadius: 999,
+                    border: `1px solid ${colors.green}44`,
+                    background: `${colors.green}12`,
+                    marginBottom: 24,
+                }}>
+                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: colors.green, display: "inline-block", boxShadow: `0 0 6px ${colors.green}` }} />
+                    <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase", color: colors.green, margin: 0 }}>
+                        Zero-Fee Trading Card Exchange
+                    </p>
+                </div>
 
                 <h1 style={{ fontSize: "clamp(88px, 18vw, 172px)", fontWeight: 900, color: "#fff", letterSpacing: "-0.05em", margin: "0 0 20px", lineHeight: 0.88 }}>
                     tash.
