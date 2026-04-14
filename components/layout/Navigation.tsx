@@ -361,7 +361,7 @@ export function Navigation() {
               onClick={() => setShowSubmitModal(true)}
               className={cn(
                 "flex items-center gap-[6px] rounded-[10px] px-3 py-[7px]",
-                "text-[13px] font-semibold transition-all duration-150 active:scale-[0.98]",
+                "text-[13px] font-semibold transition-all duration-150 active:scale-[0.98] hover:brightness-110",
               )}
               style={{
                 background: colors.green,
@@ -414,7 +414,7 @@ export function Navigation() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setShowSignIn(true)}
-                className="rounded-[10px] px-3 md:px-4 py-[7px] text-[13px] font-semibold transition-all duration-150"
+                className="rounded-[10px] px-3 md:px-4 py-[7px] text-[13px] font-semibold transition-all duration-150 hover:bg-[#1A1A1A]"
                 style={{ color: colors.textPrimary }}
               >
                 Sign In
@@ -422,7 +422,7 @@ export function Navigation() {
               {!isMobile && (
                 <button
                   onClick={() => router.push("/sign-up")}
-                  className="rounded-[10px] px-4 py-[7px] text-[13px] font-semibold transition-all duration-150 active:scale-[0.98]"
+                  className="rounded-[10px] px-4 py-[7px] text-[13px] font-semibold transition-all duration-150 active:scale-[0.98] hover:brightness-110"
                   style={{ background: colors.green, color: colors.textInverse }}
                 >
                   Sign Up

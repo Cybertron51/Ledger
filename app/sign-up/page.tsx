@@ -1,7 +1,7 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import React, { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { colors } from "@/lib/theme";
@@ -11,10 +11,11 @@ import { useAuth } from "@/lib/auth";
  * Sign-Up Page — only reachable after the landing-page referral gate
  * sets the `referral_code` cookie (enforced by middleware.ts).
  */
-export default function SignUpPage() {
+function SignUpForm() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const { user, isProfileComplete } = useAuth();
-    const [email, setEmail] = useState("");
+    const [email, setEmail] = useState(searchParams.get("email") ?? "");
     const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
     const [errorMsg, setErrorMsg] = useState("");
@@ -207,5 +208,13 @@ export default function SignUpPage() {
                 </div>
             </div>
         </div>
+    );
+}
+
+export default function SignUpPage() {
+    return (
+        <Suspense>
+            <SignUpForm />
+        </Suspense>
     );
 }

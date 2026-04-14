@@ -390,7 +390,7 @@ function TradeModal({
               <button
                 type="button"
                 onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] text-[20px] font-bold"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] text-[20px] font-bold hover:bg-[#333333] active:scale-[0.95]"
                 style={{
                   background: colors.surfaceRaised,
                   color: colors.textPrimary,
@@ -417,7 +417,7 @@ function TradeModal({
                   if (cap < 1) return;
                   setQuantity((q) => Math.min(q + 1, cap));
                 }}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] text-[20px] font-bold disabled:opacity-40"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] text-[20px] font-bold disabled:opacity-40 hover:bg-[#333333] active:scale-[0.95]"
                 style={{
                   background: colors.surfaceRaised,
                   color: colors.textPrimary,
@@ -464,7 +464,7 @@ function TradeModal({
                 type="button"
                 onClick={handleConfirm}
                 disabled={!canAfford || !canPlaceBySupply || price <= 0}
-                className="w-full rounded-[12px] py-[16px] text-[15px] font-bold transition-all active:scale-[0.98] disabled:opacity-40"
+                className="w-full rounded-[12px] py-[16px] text-[15px] font-bold transition-all active:scale-[0.98] disabled:opacity-40 hover:brightness-110"
                 style={{ background: accent, color: colors.textInverse }}
               >
                 {!canAfford

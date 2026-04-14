@@ -148,7 +148,6 @@ body {
 *:focus-visible {
   outline: 2px solid var(--color-green) !important;
   outline-offset: 3px !important;
-  border-radius: inherit !important;
 }
 
 /* Inputs — zero offset so ring sits right on the border */
@@ -157,13 +156,50 @@ textarea:focus-visible,
 select:focus-visible {
   outline: 2px solid var(--color-green) !important;
   outline-offset: 0px !important;
-  border-radius: inherit !important;
 }
 
 /* Skip focus ring for purely decorative / non-interactive uses */
 [tabindex="-1"]:focus-visible {
   outline: none !important;
   box-shadow: none !important;
+}
+
+/* ─────────────────────────────────────────────
+   Interactive Hover & Transition Defaults
+───────────────────────────────────────────── */
+
+/* Cursor pointer for all non-disabled interactive elements */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* Smooth transition baseline — covers bg, border, color, opacity, transform */
+button:not(:disabled) {
+  transition: opacity 0.15s ease, background-color 0.15s ease,
+              border-color 0.15s ease, color 0.15s ease,
+              transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+a {
+  transition: opacity 0.15s ease, color 0.15s ease, background-color 0.15s ease;
+}
+
+/* Fallback hover: very subtle brightness lift for buttons with no explicit hover state.
+   Low-specificity element selector so any Tailwind hover:bg-* or hover:brightness-*
+   class overrides this automatically. */
+button:not(:disabled):hover {
+  filter: brightness(1.06);
+}
+
+/* Active press feedback — universal */
+button:not(:disabled):active {
+  transform: scale(0.97);
+  filter: brightness(0.95);
 }
 
 /* ─────────────────────────────────────────────

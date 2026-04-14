@@ -1714,17 +1714,17 @@ function DetailPanel({
       {/* Action buttons */}
       <div className="mt-5 flex gap-3">
         {["tradable"].includes(holding.status) && (
-          <button onClick={() => onOpenListModal(holding.id)} className="flex-1 rounded-[10px] px-4 py-[10px] text-[13px] font-semibold transition-colors duration-150" style={{ background: colors.green, color: colors.textInverse, cursor: "pointer", border: `1px solid ${colors.green}` }}>
+          <button onClick={() => onOpenListModal(holding.id)} className="flex-1 rounded-[10px] px-4 py-[10px] text-[13px] font-semibold transition-all duration-150 hover:brightness-110 active:scale-[0.98]" style={{ background: colors.green, color: colors.textInverse, cursor: "pointer", border: `1px solid ${colors.green}` }}>
             List for Sale
           </button>
         )}
         {holding.status === "listed" && (
-          <button onClick={() => onCancelListing(holding.id)} className="flex-1 rounded-[10px] px-4 py-[10px] text-[13px] font-semibold transition-colors duration-150" style={{ background: "transparent", color: colors.red, cursor: "pointer", border: `1px solid ${colors.red}` }}>
+          <button onClick={() => onCancelListing(holding.id)} className="flex-1 rounded-[10px] px-4 py-[10px] text-[13px] font-semibold transition-all duration-150 hover:bg-red-500/10 active:scale-[0.98]" style={{ background: "transparent", color: colors.red, cursor: "pointer", border: `1px solid ${colors.red}` }}>
             Cancel Listing
           </button>
         )}
         {holding.status === "pending_authentication" && (
-          <button onClick={() => onOpenSubmitModal(holding.id)} className="flex-1 rounded-[10px] px-4 py-[10px] text-[13px] font-semibold transition-colors duration-150" style={{ background: colors.green, color: colors.textInverse, cursor: "pointer", border: `1px solid ${colors.green}` }}>
+          <button onClick={() => onOpenSubmitModal(holding.id)} className="flex-1 rounded-[10px] px-4 py-[10px] text-[13px] font-semibold transition-all duration-150 hover:brightness-110 active:scale-[0.98]" style={{ background: colors.green, color: colors.textInverse, cursor: "pointer", border: `1px solid ${colors.green}` }}>
             Submit to tash.
           </button>
         )}
@@ -1734,7 +1734,7 @@ function DetailPanel({
           </button>
         )}
         {["tradable"].includes(holding.status) && (
-          <button onClick={() => onOpenWithdrawModal(holding.id)} className="flex-1 rounded-[10px] px-4 py-[10px] text-[13px] font-semibold transition-colors duration-150" style={{ background: colors.surface, color: colors.textPrimary, cursor: "pointer", border: `1px solid ${colors.border}` }}>
+          <button onClick={() => onOpenWithdrawModal(holding.id)} className="flex-1 rounded-[10px] px-4 py-[10px] text-[13px] font-semibold transition-all duration-150 hover:bg-[#2A2A2A] active:scale-[0.98]" style={{ background: colors.surface, color: colors.textPrimary, cursor: "pointer", border: `1px solid ${colors.border}` }}>
             Request Withdrawal
           </button>
         )}

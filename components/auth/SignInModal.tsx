@@ -16,10 +16,11 @@ import { useAuth } from "@/lib/auth";
 
 interface SignInModalProps {
   onClose: () => void;
+  initialEmail?: string;
 }
 
-export function SignInModal({ onClose }: SignInModalProps) {
-  const [email, setEmail] = useState("");
+export function SignInModal({ onClose, initialEmail = "" }: SignInModalProps) {
+  const [email, setEmail] = useState(initialEmail);
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
